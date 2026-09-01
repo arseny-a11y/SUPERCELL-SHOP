@@ -5,7 +5,7 @@ from aiogram.types import FSInputFile
 from aiogram.client.session.aiohttp import AiohttpSession
 import asyncio
 import logging
-from app.database.config import settings
+from config.config import settings
 
 session = AiohttpSession(proxy=settings.PROXY_URL)
 bot = Bot(settings.TOKEN,session=session)
