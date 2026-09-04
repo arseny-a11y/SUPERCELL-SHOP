@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    DB_NAME: str = 'app/database/database.db'
+    DB_NAME: str = 'database/database.db'
     TOKEN: str
     PROXY_URL: str
 

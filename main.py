@@ -1,39 +1,44 @@
-from aiogram import Dispatcher, Bot, F
-from aiogram.filters import CommandStart
-from aiogram.types import Message
-from aiogram.types import FSInputFile
-from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram import Dispatcher, Bot
+from aiogram.client.session.aiohttp import AiohttpSession # работа с proxy
 import asyncio
 import logging
 from config.config import settings
-
-session = AiohttpSession(proxy=settings.PROXY_URL)
-bot = Bot(settings.TOKEN,session=session)
-dp = Dispatcher()
-
-
-@dp.message(CommandStart())
-async def start_comand(message: Message):
-
-    photo = FSInputFile('image/menu.png')
-    text = (
-        f"👋 <b>{message.from_user.first_name}</b>, приветствуем тебя!\n\n"
-        "🎉 <b>Добро пожаловать в SUP SHOP!</b>\n"
-        "У нас ты найдешь лучший выбор аккаунтов и цифровых товаров Supercell.\n\n"
-        "😉 Заглядывай в каталог и выбирай самые топовые товары! С любовью, SUP SHOP 🧡"
-    )
-    await message.answer_photo(photo=photo,caption=text,parse_mode='HTML')
+from middlewares.db_session import DbSessionMiddleware
+from database.database import async_session_factory
+from database.database import init_db
+from handlers.user import user_router
 
 async def main():
+    session = AiohttpSession(proxy=settings.PROXY_URL)
+    bot = Bot(settings.TOKEN,session=session)
+    dp = Dispatcher()
+
+    
+    #инициализируем табилицы в базе
+    await init_db()
+    #подключаем middleware
+    dp.update.middleware(DbSessionMiddleware(session_pool=async_session_factory))
+    #подключаем router
+    dp.include_router(user_router)
+
+    
+    logging.basicConfig(level=logging.INFO)
+ 
     try:
-        logging.basicConfig(level=logging.INFO)
         print('Бот запущен!')
+        # Удаляем вебхуки и сбрасываем подвисшие апдейты
+        await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
 
-    except KeyboardInterrupt:
-        print('Бот остановлен!')
+    finally:
+        # Корректно закрываем сессию соединений
+        await bot.session.close()   
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+        
+    except (KeyboardInterrupt, SystemExit):
+        print('Бот остановлен!')
 
     

@@ -19,10 +19,11 @@ all_id = Annotated[int,mapped_column(primary_key=True,autoincrement=True)]
 user_tg_id = Annotated[int, mapped_column(BigInteger)]
 time_now = Annotated[datetime,mapped_column(server_default=func.now())]
 
-class Users(Base):
+class User(Base):
     __tablename__ = 'users'
 
-    id: Mapped[int] = mapped_column(BigInteger,primary_key=True)
+    id: Mapped[int] = mapped_column(primary_key=True,autoincrement=True)
+    tg_id: Mapped[int] = mapped_column(unique=True,index=True)
     username: Mapped[str | None]
     full_name: Mapped[str]
     registered_at: Mapped[time_now]
