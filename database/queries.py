@@ -1,6 +1,6 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from database.models import User
+from database.models import User, Categories, Items
 
 class UserQueries():
 
@@ -12,7 +12,17 @@ class UserQueries():
         if not user:
             user = User(tg_id=tg_id,username=username,full_name=full_name)
             session.add(user)
-            await session.commit()
-            await session.refresh(user)
+            await session.flush()
             print(f'user_id={tg_id} успешно добавлен в базу!')
         return user
+
+class ProductsQueries():
+    @staticmethod
+
+    async def get_all_categories(session: AsyncSession):
+        categories = (await session.scalars(select(Categories))).all()
+        return categories
+
+    async def get_product(session: AsyncSession, callback_data):
+        items = (await session.scalars(select(Items).where(Items.category_id == callback_data.category_id, Items.is_sold.is_(False)))).all()
+        return items
