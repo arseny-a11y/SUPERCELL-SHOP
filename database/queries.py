@@ -26,3 +26,11 @@ class ProductsQueries():
     async def get_product(session: AsyncSession, callback_data):
         items = (await session.scalars(select(Items).where(Items.category_id == callback_data.category_id, Items.is_sold.is_(False)))).all()
         return items
+
+class CreatedCategories():
+    @staticmethod
+
+    async def new_category(session: AsyncSession, name: str):
+        category = Categories(name=name)
+        session.add(category)
+        await session.commit()

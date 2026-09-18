@@ -4,6 +4,7 @@ class Settings(BaseSettings):
     DB_NAME: str = 'database/database.db'
     TOKEN: str
     PROXY_URL: str
+    ADMIN_ID: int
 
     @property
     def DATABASE_URL_aiosqlite(self) -> str:
@@ -12,7 +13,7 @@ class Settings(BaseSettings):
     @property
     def DATABASE_URL_sqlite(self) -> str:
         return f'sqlite:///{self.DB_NAME}'
-
+ 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()

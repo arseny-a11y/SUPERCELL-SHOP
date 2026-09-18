@@ -57,3 +57,22 @@ def item_card_keyboard(product_id: int, category_id: int) -> InlineKeyboardMarku
 
     kb.adjust(1)
     return kb.as_markup()
+
+
+#категории товаров для админа
+def category_admin(categories: list) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+
+    for cat in categories:
+        kb.button(text=cat.name, callback_data=f"admin_cat_{cat.id}")
+    kb.button(text="❌ Отмена", callback_data="admin_cancel_upload")
+    kb.button(text="📦 Создать категорию",callback_data="create_category")
+
+    kb.adjust(2)
+    return kb.as_markup()
+
+def create_category() -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+
+    kb.button(text="📦 Создать категорию",callback_data="create_category")
+    return kb.as_markup()
