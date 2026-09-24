@@ -64,3 +64,4 @@ async def user_profile(message: Message, user: User):
         f"🕑 <b>Дата регистрации</b>: {registered_at}\n"
     )
     await message.answer_photo(photo=photo,caption=text,reply_markup=keyboard_profile(),parse_mode='HTML')
+

@@ -1,6 +1,7 @@
-from sqlalchemy import select
+from sqlalchemy import select,func
 from sqlalchemy.ext.asyncio import AsyncSession
 from database.models import User, Categories, Items
+import math
 
 class UserQueries():
 
@@ -26,7 +27,17 @@ class ProductsQueries():
     async def get_product(session: AsyncSession, callback_data):
         items = (await session.scalars(select(Items).where(Items.category_id == callback_data.category_id, Items.is_sold.is_(False)))).all()
         return items
+    
+    #реализация пагинации
+    async def get_items(session: AsyncSession,page: int, items_rep_page: int,category_id: int):
+        total_items = int(await session.scalar(select(func.count(Items.id)).where(Items.category_id == category_id,Items.is_sold.is_(False)))) or 0
 
+        total_page = max(1, math.ceil(total_items / items_rep_page))
+
+        offset = (page - 1) * items_rep_page
+        items = (await session.scalars(select(Items).where(Items.category_id == category_id, Items.is_sold.is_(False)).offset(offset).limit(items_rep_page))).all()
+
+        return offset,total_page,items
 class CreatedCategories():
     @staticmethod
 

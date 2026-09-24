@@ -9,6 +9,7 @@ from database.database import init_db
 from handlers.user import user_router
 from handlers.catalog import catalog_router
 from handlers.admin import admin_router
+from handlers.payments import router_pay
 
 async def main():
     session = AiohttpSession(proxy=settings.PROXY_URL)
@@ -25,7 +26,8 @@ async def main():
     #подключаем routers
     dp.include_router(catalog_router)
     dp.include_router(user_router)
-    dp.include_router(admin_router)    
+    dp.include_router(admin_router)
+    dp.include_router(router_pay)  
     logging.basicConfig(level=logging.INFO)
  
     try:

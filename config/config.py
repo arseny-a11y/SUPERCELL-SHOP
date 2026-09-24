@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     TOKEN: str
     PROXY_URL: str
     ADMIN_ID: int
+    CRYPTO_PAY_TOKEN: str
 
     @property
     def DATABASE_URL_aiosqlite(self) -> str:
