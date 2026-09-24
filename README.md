@@ -47,8 +47,9 @@
 ├── config.py            # Валидация переменных окружения через Pydantic
 ├── main.py              # Инициализация и точка входа (polling)
 └── requirements.txt     # Зависимости проекта
+```
 
-Видеообзор:
+## 🎦 Видеообзор:
 https://github.com/user-attachments/assets/610aa444-48a0-4871-bdfd-840a41053c86
 
 
