@@ -42,8 +42,8 @@
 ├── keyboards/           # Сборка inline и reply клавиатур
 ├── middlewares/         # Middleware (сессии БД, обработка ошибок)
 ├── database/            # Модели SQLAlchemy и фабрика асинхронных сессий
-├── services/            # Интеграция со сторонними API (клиент CryptoPay)
-├── .env.example         # Пример конфигурационного файла
+├── payments/            # Интеграция со сторонними API (клиент CryptoPay)
+├── crypto_pay.py        # Код оплаты CryptoBot
 ├── config.py            # Валидация переменных окружения через Pydantic
 ├── main.py              # Инициализация и точка входа (polling)
 └── requirements.txt     # Зависимости проекта
