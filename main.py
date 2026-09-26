@@ -24,10 +24,12 @@ async def main():
     dp.update.outer_middleware(UserDatabaseMiddleware())
 
     #подключаем routers
-    dp.include_router(catalog_router)
-    dp.include_router(user_router)
-    dp.include_router(admin_router)
-    dp.include_router(router_pay)  
+    dp.include_routers(
+        admin_router,
+        router_pay,
+        catalog_router,
+        user_router,
+    )
     logging.basicConfig(level=logging.INFO)
  
     try:

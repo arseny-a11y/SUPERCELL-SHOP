@@ -8,7 +8,7 @@ from keyboards.reply import admin_menu
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from database.models import Categories, Items
-from keyboards.inline import category_admin,create_category
+from keyboards.inline import category_admin,create_category,delete_category_kb
 from database.queries import CreatedCategories
 import io
 
@@ -56,10 +56,29 @@ async def category_selected(callback: CallbackQuery, state: FSMContext,):
         "Отправьте <b>.txt</b> файл со списком товаров документом.\n"
         "Формат строки:\n"
         "<code>Название | Описание | Цена | Данные_товара</code>",
-        parse_mode="HTML"
+        parse_mode="HTML",
+        reply_markup=delete_category_kb(cat_id)
     )  
 
     await callback.answer()
+
+@admin_router.callback_query(F.data.startswith("del_cat"))
+async def delete_category(callback: CallbackQuery, session: AsyncSession):
+    cat_id = int(callback.data.split(":")[-1])
+
+    query = (select(Categories).where(Categories.id == cat_id))
+    result = await session.execute(query)
+    category = result.scalar_one_or_none()
+
+    if not category:
+        return await callback.answer("Категория уже удалена или не найдена.", show_alert=True)
+
+    await session.delete(category)
+    await session.commit()
+
+    await callback.answer("Категория успешно удалена!")
+    await callback.message.edit_text(f"✅ Категория #{cat_id} удалена.")
+
 
 @admin_router.message(AdminUploadItems.waiting_for_file, F.document)
 async def upload_items(message: Message, state: FSMContext, session: AsyncSession, bot: Bot):

@@ -5,8 +5,12 @@ from database.models import User
 from database.queries import UserQueries
 from aiogram.types import FSInputFile #работа с изображениями
 from keyboards.reply import create_keyboard_menu
-from keyboards.inline import keyboard_support
-from keyboards.inline import keyboard_profile
+from keyboards.inline import keyboard_support,keyboard_profile
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from payments.crypto_pay import CryptoPay
+from config.config import settings
+
 
 user_router = Router()
 

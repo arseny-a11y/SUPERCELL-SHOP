@@ -56,6 +56,7 @@ class Orders(Base):
     user_id: Mapped[user_tg_id] = mapped_column(ForeignKey('users.id'))
     item_id: Mapped[int] = mapped_column(ForeignKey('items.id'))
     price: Mapped[Decimal] = mapped_column(Numeric(10,2))
+    item_data: Mapped[str]
     purchased_at: Mapped[time_now]
 
 class Payments(Base):
@@ -63,6 +64,7 @@ class Payments(Base):
 
     id: Mapped[all_id]
     user_id: Mapped[user_tg_id] = mapped_column(BigInteger, ForeignKey('users.id'))
+    invoice_id: Mapped[int] = mapped_column(unique=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(10,2))
     payment_system: Mapped[str]
     status: Mapped[str] = mapped_column(default='pending')

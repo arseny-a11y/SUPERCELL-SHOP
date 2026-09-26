@@ -14,7 +14,7 @@ def keyboard_profile() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
     kb.button(text='📂 История покупок',callback_data='purchases')
-    kb.button(text='Пополнить баланс 📥',callback_data='up_balance')
+    kb.button(text='Пополнить баланс 📥',callback_data='top_up_balance')
 
 
     return kb.as_markup()
@@ -34,9 +34,9 @@ class ItemsPageCD(CallbackData,prefix='items_page'):
     category_id: int
     page: int
 
-class PayCheckCD(CallbackData,prefix='chek_pay'):
-    invoice_id: int
-    item_id: int
+# class PayCheckCD(CallbackData,prefix='chek_pay'):
+#     invoice_id: int
+#     item_id: int
 
 
 
@@ -60,10 +60,10 @@ def keyboard_categories(categories: list) -> InlineKeyboardMarkup:
 #     kb.adjust(1)
 #     return kb.as_markup()
 
-def item_card_keyboard(product_id: int, category_id: int) -> InlineKeyboardMarkup:
+def item_card_keyboard(item_id: int, category_id: int) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
-    kb.button(text="💳 Купить", callback_data=BuyCD(item_id=product_id).pack())
+    kb.button(text="💳 Купить", callback_data=BuyCD(item_id=item_id).pack())
     kb.button(text="◀️ Назад к списку",callback_data=CategoryCD(category_id=category_id).pack())
 
     kb.adjust(1)
@@ -80,6 +80,13 @@ def category_admin(categories: list) -> InlineKeyboardMarkup:
     kb.button(text="📦 Создать категорию",callback_data="create_category")
 
     kb.adjust(2)
+    return kb.as_markup()
+
+#Удаление категории
+def delete_category_kb(cat_id: int) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="❌ Удалить категорию",callback_data=f"del_cat:{cat_id}")
+
     return kb.as_markup()
 
 def create_category() -> InlineKeyboardMarkup:
@@ -144,11 +151,23 @@ def items_pagination_keyboards(page: int, total_page: int, category_id: int, ite
 
 #Создание клавиатуры для проверки оплаты
 
-def check_pay_keyboard(invoice: dict,item_id: int) -> InlineKeyboardMarkup:
+# def check_pay_keyboard(invoice: dict,item_id: int) -> InlineKeyboardMarkup:
+#     kb = InlineKeyboardBuilder()
+
+#     kb.button(text="Оплатить",url=invoice["bot_invoice_url"])
+#     kb.button(text="Проверить оплату",callback_data=PayCheckCD(invoice_id=invoice["invoice_id"],item_id=item_id))
+
+#     kb.adjust(1)
+
+#     return kb.as_markup()
+
+# Клавиатура для поплнения баланса
+
+def top_up_balance_crypto_kb(amount: int, invoice: dict) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
-    kb.button(text="Оплатить",url=invoice["bot_invoice_url"])
-    kb.button(text="Проверить оплату",callback_data=PayCheckCD(invoice_id=invoice["invoice_id"],item_id=item_id))
+    kb.button(text=f"🪪 Оплатить {amount} ₽",url=invoice["bot_invoice_url"])
+    kb.button(text="Проверить оплату",callback_data=f"check_pay_crypto:{invoice.get('invoice_id')}")
 
     kb.adjust(1)
 
