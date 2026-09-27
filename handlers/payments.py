@@ -208,6 +208,7 @@ async def buy_product(
         user_id=user.tg_id,
         item_id=item.id,
         price=item.price,
+        purchase_price=item.purchase_price,
         item_data=item.data,
     )
     session.add(new_order)

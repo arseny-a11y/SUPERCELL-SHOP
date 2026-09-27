@@ -6,11 +6,14 @@ from aiogram.fsm.state import State, StatesGroup
 from config.config import settings
 from keyboards.reply import admin_menu 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from database.models import Categories, Items
+from sqlalchemy import select,func
+from database.models import Categories, Items, User, Orders
 from keyboards.inline import category_admin,create_category,delete_category_kb
 from database.queries import CreatedCategories
+from decimal import Decimal, InvalidOperation
 import io
+from datetime import datetime, time
+
 
 admin_router = Router()
 ADMIN_ID = [settings.ADMIN_ID]
@@ -107,14 +110,15 @@ async def upload_items(message: Message, state: FSMContext, session: AsyncSessio
     for num, line in enumerate(lines,start=1):
         data_account = [d.strip() for d in line.split("|")]
 
-        if len(data_account) != 4:
-            return await message.answer(f"❌ Ошибка: в строке {num}: ожидалось 4 поля через '|'")
+        if len(data_account) != 5:
+            return await message.answer(f"❌ Ошибка: в строке {num}: ожидалось 5 полей через '|'")
         
-        title, desc, price, data = data_account
+        title, desc, price, purchase_price, data = data_account
 
         try:
-            check_price = int(price)
-        except ValueError:
+            clean_price = Decimal(price.replace(",", "."))
+            clean_purchase_price = Decimal(purchase_price.replace(",", "."))
+        except InvalidOperation:
             return await message.answer(f"❌ Ошибка: Цена не является цислом в строке {num}")
 
         products.append(
@@ -122,7 +126,8 @@ async def upload_items(message: Message, state: FSMContext, session: AsyncSessio
                  category_id=category_id["cat_id"],
                  title=title,
                  description=desc,
-                 price=int(price),
+                 price=clean_price,
+                 purchase_price=clean_purchase_price,
                  data=data,
                  is_sold=False
             )
@@ -156,3 +161,58 @@ async def cancel_upload(callback: CallbackQuery, state: FSMContext):
    await state.clear()
    await callback.message.edit_text("Загрузка отменена ❌")
    await callback.answer()
+
+
+#Статистика продаж
+@admin_router.message(F.text == "📊 Статистика")
+async def sales_stats(message: Message, session: AsyncSession):
+    
+    #дата 00-00 сегодняшнего числа
+    time_start = datetime.combine(datetime.now().date(), time.min)
+
+    #кол-во юзеров в боте
+    all_user_in_bot = await session.scalar(select(func.count(User.id))) or 0 
+    #кол-во юзеров в боте за сегодня
+    users_for_day = await session.scalar(select(func.count(User.id)).where(User.registered_at >= time_start)) or 0
+    #баланс на руках у юзеров
+    users_balance = await session.scalar(select(func.sum(User.balance))) or 0
+
+    #всего продано товаров за все время
+    all_salles_count = await session.scalar(select(func.count(Orders.id))) or 0
+    #куплено товаров за сегодня 
+    salles_for_day = await session.scalar(select(func.count(Orders.id)).where(Orders.purchased_at >= time_start)) or 0
+    # кол-во товаров в наличии
+    num_items_stock = await session.scalar(select(func.count(Items.id)).where(Items.is_sold.is_(False))) or 0
+
+    #выручка всего
+    total_revenue = await session.scalar(select(func.sum(Orders.price))) or 0
+    #выручка за сегодня
+    revenue_for_day = await session.scalar(select(func.sum(Orders.price)).where(Orders.purchased_at >= time_start)) or 0
+
+    #чистыми за все время
+    total_cost = await session.scalar(select(func.sum(Orders.purchase_price))) or 0
+    clean_money = total_revenue - total_cost
+    #чистыми за сегодня
+    cost_for_day = await session.scalar(select(func.sum(Orders.purchase_price)).where(Orders.purchased_at >= time_start)) or 0
+    clean_money_for_day = revenue_for_day - cost_for_day
+
+    text = (
+        "📊 **𝗦𝗧𝗔𝗧𝗜𝗦𝗧𝗜𝗖𝗦 | Панель управления**\n\n"
+        "👥 **Пользователи:**\n"
+        f"├ Всего в боте: `{all_user_in_bot}` чел.\n"
+        f"├ Новых за сегодня: `+{users_for_day}` чел.\n"
+        f"└ Баланс на руках у юзеров: `{users_balance:.2f} ₽`\n\n"
+        "📦 **Продажи и склад:**\n"
+        f"├ Всего продано: `{all_salles_count}` шт.\n"
+        f"├ Куплено сегодня: `{salles_for_day}` шт.\n"
+        f"└ В наличии товаров: `{num_items_stock}` шт.\n\n"
+        "💰 **Финансы:**\n"
+        f"├ Выручка (всего): `{total_revenue:.2f} ₽`\n"
+        f"├ Выручка за сегодня: `{revenue_for_day:.2f} ₽`\n"
+        f"└ Чистыми за все время: `{clean_money:.2f} ₽`"
+        f"└ Чистыми за сегодня: `{clean_money_for_day:.2f} ₽`"
+    )
+
+    await message.answer(text=text,parse_mode="Markdown")
+
+    

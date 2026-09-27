@@ -45,6 +45,7 @@ class Items(Base):
     title: Mapped[str]
     description: Mapped[str] = mapped_column(Text)
     price: Mapped[Decimal] = mapped_column(Numeric(10,2))
+    purchase_price: Mapped[Decimal] = mapped_column(Numeric(10,2), nullable=False)
     data: Mapped[str] = mapped_column(Text)
     is_sold: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[time_now]
@@ -56,6 +57,7 @@ class Orders(Base):
     user_id: Mapped[user_tg_id] = mapped_column(ForeignKey('users.id'))
     item_id: Mapped[int] = mapped_column(ForeignKey('items.id'))
     price: Mapped[Decimal] = mapped_column(Numeric(10,2))
+    purchase_price: Mapped[Decimal] = mapped_column(Numeric(10,2), nullable=False)
     item_data: Mapped[str]
     purchased_at: Mapped[time_now]
 
