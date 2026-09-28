@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.models import Categories, Items
 from database.queries import ProductsQueries
 from aiogram.exceptions import TelegramBadRequest
+from config.config import settings
 from keyboards.inline import (
     CategoryCD,
     ItemsCD,
@@ -50,6 +51,9 @@ async def back_to_categories(callback: CallbackQuery, session: AsyncSession):
 
 @catalog_router.callback_query(ItemsCD.filter())
 async def back_to_product(callback: CallbackQuery, callback_data: ItemsCD, session: AsyncSession):
+    is_admin = (
+        callback.from_user.id == settings.ADMIN_ID
+    )
     item_id = callback_data.item_id
     item = await session.scalar(select(Items).where(Items.id == item_id, Items.is_sold.is_(False)))
 
@@ -61,7 +65,7 @@ async def back_to_product(callback: CallbackQuery, callback_data: ItemsCD, sessi
          f"🪙Цена: {item.price}"
     )
     try:
-        await callback.message.edit_text(text,reply_markup=item_card_keyboard(item_id,item.category_id),parse_mode='HTML')
+        await callback.message.edit_text(text,reply_markup=item_card_keyboard(item_id,item.category_id, is_admin=is_admin),parse_mode='HTML')
 
     except TelegramBadRequest as e:
         if "message is not modified" not in e.message:
@@ -73,6 +77,7 @@ async def back_to_product(callback: CallbackQuery, callback_data: ItemsCD, sessi
 
 @catalog_router.callback_query(CategoryCD.filter())
 async def show_category_pagination(callback: CallbackQuery,callback_data: CategoryCD, session: AsyncSession):
+
     category_id = callback_data.category_id
     page = 1
 

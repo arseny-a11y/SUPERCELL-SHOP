@@ -6,9 +6,9 @@ from aiogram.fsm.state import State, StatesGroup
 from config.config import settings
 from keyboards.reply import admin_menu 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select,func
+from sqlalchemy import select,func, delete
 from database.models import Categories, Items, User, Orders
-from keyboards.inline import category_admin,create_category,delete_category_kb
+from keyboards.inline import category_admin,create_category,delete_category_kb, keyboard_categories
 from database.queries import CreatedCategories
 from decimal import Decimal, InvalidOperation
 import io
@@ -215,4 +215,30 @@ async def sales_stats(message: Message, session: AsyncSession):
 
     await message.answer(text=text,parse_mode="Markdown")
 
-    
+
+#управление товарами
+@admin_router.message(F.text == "📦 Управление товарами")
+async def product_managment(message: Message, session: AsyncSession):
+    all_categories = await session.scalars(select(Categories))
+    await message.answer(text="Выберите категорию для управления 📦", reply_markup=keyboard_categories(all_categories))
+
+#ловит callback: admin_delete_item, для удаления конкретного товара
+@admin_router.callback_query(F.data.startswith("admin_delete_item"))
+async def delete_item(callback: CallbackQuery, session: AsyncSession):
+    item_id = int(callback.data.split(":")[-1])
+
+    del_item = (
+        delete(Items).
+        where(Items.id == item_id,Items.is_sold.is_(False))
+    )
+    result = await session.execute(del_item)
+    await session.commit()
+
+    if result.rowcount == 0:
+        await callback.answer(
+        "⚠️ Товар не найден или уже был куплен!", show_alert=True
+    )
+
+    else:
+        await callback.answer("✅ Товар успешно удалён!", show_alert=True)
+        await callback.message.edit_text("🗑 Товар был удалён из категории.")

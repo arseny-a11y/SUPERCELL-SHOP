@@ -60,11 +60,14 @@ def keyboard_categories(categories: list) -> InlineKeyboardMarkup:
 #     kb.adjust(1)
 #     return kb.as_markup()
 
-def item_card_keyboard(item_id: int, category_id: int) -> InlineKeyboardMarkup:
+def item_card_keyboard(item_id: int, category_id: int, is_admin: bool) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
     kb.button(text="💳 Купить", callback_data=BuyCD(item_id=item_id).pack())
     kb.button(text="◀️ Назад к списку",callback_data=CategoryCD(category_id=category_id).pack())
+
+    if is_admin:
+        kb.button(text="❌ Удалить товар", callback_data=f"admin_delete_item:{item_id}")
 
     kb.adjust(1)
     return kb.as_markup()
@@ -97,7 +100,7 @@ def create_category() -> InlineKeyboardMarkup:
 
 # пролистывание меню по стрелочкам <>
 
-def items_pagination_keyboards(page: int, total_page: int, category_id: int, items: list) -> InlineKeyboardMarkup:
+def items_pagination_keyboards(page: int, total_page: int, category_id: int, items: list,) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
     for item in items:
