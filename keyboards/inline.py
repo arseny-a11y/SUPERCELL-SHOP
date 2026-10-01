@@ -14,9 +14,10 @@ def keyboard_profile() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
     kb.button(text='📂 История покупок',callback_data='purchases')
-    kb.button(text='Пополнить баланс 📥',callback_data='top_up_balance')
+    kb.button(text='📥 Пополнить баланс',callback_data='top_up_balance')
+    kb.button(text="🎫 Ввести промокод", callback_data="enter_promocode")
 
-
+    kb.adjust(1)
     return kb.as_markup()
 
 
@@ -39,8 +40,6 @@ class ItemsPageCD(CallbackData,prefix='items_page'):
 #     item_id: int
 
 
-
-# Меню со списком категорий
 def keyboard_categories(categories: list) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
@@ -173,5 +172,21 @@ def top_up_balance_crypto_kb(amount: int, invoice: dict) -> InlineKeyboardMarkup
     kb.button(text="Проверить оплату",callback_data=f"check_pay_crypto:{invoice.get('invoice_id')}")
 
     kb.adjust(1)
+
+    return kb.as_markup()
+
+#кнопка отмены для отправки рассылки всем пользователям
+
+def cancel_mailing_kb() -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="❌ Отменить рассылку",callback_data="cancel_mailing")
+
+    return kb.as_markup()
+
+#кнопка генерации промокода
+
+def generation_code_kb() -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="✨Сгенерировать✨",callback_data="gen_code")
 
     return kb.as_markup()

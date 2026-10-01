@@ -1,6 +1,6 @@
 from sqlalchemy import select,func
 from sqlalchemy.ext.asyncio import AsyncSession
-from database.models import User, Categories, Items
+from database.models import User, Categories, Items, PromoCode,PromoUsage
 import math
 
 class UserQueries():
@@ -45,3 +45,11 @@ class CreatedCategories():
         category = Categories(name=name)
         session.add(category)
         await session.commit()
+
+async def check_promocode(session: AsyncSession, promo_code):
+        uniq_promocode = select(PromoCode).where(PromoCode.code == promo_code)
+
+        result = await session.execute(uniq_promocode)
+        existing = result.scalar_one_or_none()
+
+        return existing

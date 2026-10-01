@@ -73,8 +73,6 @@ async def back_to_product(callback: CallbackQuery, callback_data: ItemsCD, sessi
         
     await callback.answer()
 
-#обработчик пагинаций
-
 @catalog_router.callback_query(CategoryCD.filter())
 async def show_category_pagination(callback: CallbackQuery,callback_data: CategoryCD, session: AsyncSession):
 
@@ -105,6 +103,7 @@ async def show_category_pagination(callback: CallbackQuery,callback_data: Catego
     await callback.answer()
 
 
+#обработчик пагинаций
 @catalog_router.callback_query(ItemsPageCD.filter())
 async def pagination_button(callback: CallbackQuery, callback_data: ItemsPageCD,session: AsyncSession):
     category_id = callback_data.category_id

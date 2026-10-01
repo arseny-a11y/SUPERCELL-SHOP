@@ -29,6 +29,8 @@ class User(Base):
     registered_at: Mapped[time_now]
     balance: Mapped[Decimal] = mapped_column(Numeric(10,2),default=Decimal('0.00'))
 
+
+
 class Categories(Base):
     __tablename__ = 'categories'
 
@@ -71,3 +73,24 @@ class Payments(Base):
     payment_system: Mapped[str]
     status: Mapped[str] = mapped_column(default='pending')
     created_at: Mapped[time_now]
+
+
+#таблицы для реализации промокодов:
+
+class PromoCode(Base):
+    __tablename__ = "promocodes"
+
+    id: Mapped[all_id]
+    code: Mapped[str] = mapped_column(unique=True, index=True) #сам промокод
+    max_uses: Mapped[int] # кол-во использований
+    current_uses: Mapped[int] = mapped_column(default=0)
+    reward_amount: Mapped[int] #сумма активации
+    create_at: Mapped[time_now] #дата создания
+
+class PromoUsage(Base):
+    __tablename__ = "promo_usage"
+
+    id: Mapped[all_id]
+    promo_id = mapped_column(ForeignKey("promocodes.id"))
+    tg_id: Mapped[int] = mapped_column(index=True) # ID пользователя активировавший промокод
+    used_at: Mapped[time_now]

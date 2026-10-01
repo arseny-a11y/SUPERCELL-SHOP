@@ -3,16 +3,21 @@ from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, TelegramObject
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from config.config import settings
 from keyboards.reply import admin_menu 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,func, delete
-from database.models import Categories, Items, User, Orders
-from keyboards.inline import category_admin,create_category,delete_category_kb, keyboard_categories
-from database.queries import CreatedCategories
+from database.models import Categories, Items, User, Orders, PromoCode, PromoUsage
+from keyboards.inline import category_admin,create_category,delete_category_kb, keyboard_categories, cancel_mailing_kb, generation_code_kb
+from database.queries import CreatedCategories, check_promocode
 from decimal import Decimal, InvalidOperation
-import io
 from datetime import datetime, time
+from config.config import settings
+import asyncio
+import string
+import secrets
+import io
 
 
 admin_router = Router()
@@ -209,7 +214,7 @@ async def sales_stats(message: Message, session: AsyncSession):
         "💰 **Финансы:**\n"
         f"├ Выручка (всего): `{total_revenue:.2f} ₽`\n"
         f"├ Выручка за сегодня: `{revenue_for_day:.2f} ₽`\n"
-        f"└ Чистыми за все время: `{clean_money:.2f} ₽`"
+        f"└ Чистыми за все время: `{clean_money:.2f} ₽`\n"
         f"└ Чистыми за сегодня: `{clean_money_for_day:.2f} ₽`"
     )
 
@@ -242,3 +247,212 @@ async def delete_item(callback: CallbackQuery, session: AsyncSession):
     else:
         await callback.answer("✅ Товар успешно удалён!", show_alert=True)
         await callback.message.edit_text("🗑 Товар был удалён из категории.")
+
+#рассылка пользователям
+class UserMailingState(StatesGroup):
+    waiting_for_message = State()
+
+@admin_router.message(F.text == "👤 Рассылка")
+async def user_mailing(message: Message, state: FSMContext):
+    await state.set_state(UserMailingState.waiting_for_message)
+    await message.answer(f"📢 Введите текст для рассылки всем пользователям бота: ",reply_markup=cancel_mailing_kb())
+
+@admin_router.message(UserMailingState.waiting_for_message)
+async def user_mailing_state(message: Message, state: FSMContext, session: AsyncSession, bot: Bot):
+    message_for_mailing = message.text
+    await state.clear()
+
+    ids_all_users = (await session.scalars(select(User.tg_id))).all()
+
+    if not ids_all_users:
+        return await message.answer("⚠️ В базе нет ни одного пользователя.")
+
+    status_msg = await message.answer(f"⏳ Начинаю рассылку... Всего получателей: <code>{len(ids_all_users)}</code>",parse_mode="HTML")
+
+    send_success = 0
+    user_blocked = 0
+    
+    for chat_id in ids_all_users:
+        if chat_id == settings.ADMIN_ID:
+            continue
+        try:
+            await bot.send_message(chat_id=chat_id,text=message_for_mailing,parse_mode="HTML")
+            send_success += 1
+
+            await asyncio.sleep(0.05)
+
+        except TelegramForbiddenError:
+            user_blocked += 1
+            continue
+
+        except TelegramRetryAfter as e:
+            await asyncio.sleep(e.retry_after)
+
+            await bot.send_message(chat_id=chat_id,text=message_for_mailing,parse_mode="HTML")
+            send_success += 1
+
+        except Exception:
+            user_blocked += 1
+            continue
+
+    await status_msg.edit_text(
+    "📊 <b>Рассылка завершена!</b>\n"
+    "━━━━━━━━━━━━━━━━━━━━━\n"
+    f"✅ Успешно доставлено: <code>{send_success}</code>\n"
+    f"🚫 Не доставлено (блок бота): <code>{user_blocked}</code>\n"
+    f"👥 Всего в базе: <code>{len(ids_all_users)}</code>\n"
+    "━━━━━━━━━━━━━━━━━━━━━",
+    parse_mode="HTML",
+    )
+
+#отмена рассылки пользователям
+@admin_router.callback_query(F.data == "cancel_mailing")
+async def cancel_mailing(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text("❌ Рассылка отменена.")
+
+#создание промокодов
+
+
+#async функция по генерации промокодов и проверка существования в базе
+async def generation_promo_code(session: AsyncSession, length: int = 8):
+    exclude = "0O1I"
+
+    all_symbol = string.ascii_uppercase + string.digits
+    clear_symbol = ''.join(s for s in all_symbol if s not in exclude)
+
+    while True:
+        promo_code = ''.join(secrets.choice(clear_symbol) for i in range(length))
+        existing = await check_promocode(session, promo_code)
+
+        if existing is None:
+            return promo_code
+
+
+#FSM состояния данных промокода
+class PromoCodeState(StatesGroup):
+    waiting_for_code = State()
+    waiting_for_max_uses = State()
+    waiting_for_amount = State()
+
+#handler обработки нажатия кнопки и открытие FSM состояния
+@admin_router.message(F.text == "🎫 Создать промокод")
+async def create_promocode(message: Message, state: FSMContext):
+    await state.set_state(PromoCodeState.waiting_for_code)
+
+    await message.answer("🎫 Введите или сгенерируйте промокод: ", reply_markup=generation_code_kb())
+
+#handler обработки нажатия "сгенерировать"
+@admin_router.callback_query(PromoCodeState.waiting_for_code, F.data == "gen_code")
+async def generation_code(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+    await callback.answer()
+    
+    promo_code = await generation_promo_code(session=session)
+    await state.update_data(code=promo_code)
+
+    await state.set_state(PromoCodeState.waiting_for_max_uses)
+    await callback.message.answer(f"✨ Ваш сгенерированный промокод: <code>{promo_code}</code>\n\nТеперь введите кол-во использований: ",parse_mode='HTML')
+
+#самостоятельный ввод промокода
+
+@admin_router.message(PromoCodeState.waiting_for_code)
+async def waiting_for_promocode(message: Message, state: FSMContext, session: AsyncSession):
+
+    if not message.text:
+        await message.answer("⚠️ Пожалуйста, отправьте промокод текстом (8 символов):")
+
+    promo_code = message.text.strip().upper()
+
+    if len(promo_code) > 8 or len(promo_code) < 8:
+        return await message.answer("⚠️ Промокод должен содержать 8 символов. Попробуйте еще раз:")
+
+    existing = await check_promocode(session, promo_code)
+
+    if existing:
+        await message.answer(
+            f"❌ Промокод <code>{promo_code}</code> уже существует или использовался ранее.\n"
+            "Введите другой промокод:",
+            parse_mode="HTML"
+        )
+        return
+
+    await state.update_data(code=promo_code)
+    await state.set_state(PromoCodeState.waiting_for_max_uses)
+
+    await message.answer(
+        f"✅ Промокод <code>{promo_code}</code> принят!\n\n"
+        "Теперь укажите <b>максимальное количество использований</b> (целое число):",
+        parse_mode="HTML"
+    )
+
+#обработа FSM состояния кол-ва использований
+
+@admin_router.message(PromoCodeState.waiting_for_max_uses)
+async def max_uses(message: Message, state: FSMContext):
+    text = message.text.strip() if message.text else ""
+
+    # Проверяем, что это строго положительное целое число
+    if not text.isdigit() or int(text) <= 0:
+        return await message.answer(
+            "⚠️ Пожалуйста, введите положительное целое число (больше 0):"
+        )
+
+    uses_count = int(text)
+
+    # Защита от неадекватно больших значений
+    if uses_count > 100_000:
+        return await message.answer(
+            "⚠️ Слишком большое число. Введите значение до 100 000:"
+        )
+
+    await state.update_data(max_uses=uses_count)
+    await state.set_state(PromoCodeState.waiting_for_amount)
+
+    await message.answer(
+        f"✅ Лимит использований: <b>{uses_count}</b>\n\n"
+        f"Теперь укажите <b>сумму награды</b> (целое число):",
+        parse_mode="HTML",
+    )
+
+
+# обработа FSM состояния суммы вознаграждения
+@admin_router.message(PromoCodeState.waiting_for_amount)
+async def amount_promocode(message: Message, state: FSMContext, session: AsyncSession):
+    text = message.text.strip() if message.text else ""
+
+    # Проверяем, что это строго положительное целое число
+    if not text.isdigit() or int(text) <= 0:
+        return await message.answer(
+            "⚠️ Пожалуйста, введите положительное целое число (больше 0):"
+        )
+
+    amount = int(text)
+    
+
+    data = await state.get_data()
+
+    code = data.get("code")
+    max_uses = data.get("max_uses")
+
+    # Страховка на случай сброса состояния
+    if not code or not max_uses:
+        await state.clear()
+        return await message.answer("⚠️ Данные устарели. Начните создание промокода заново.")
+
+    create_promo = PromoCode(
+        code=data.get("code"),
+        max_uses=data.get("max_uses"),
+        reward_amount=amount
+    )
+
+    session.add(create_promo)
+    await session.commit()
+    await state.clear()
+
+    await message.answer(
+        f"🎉 <b>Промокод успешно создан!</b>\n\n"
+        f"Код: <code>{code}</code>\n"
+        f"Активаций: <b>{max_uses}</b>\n"
+        f"Награда: <b>{amount}</b>",
+        parse_mode="HTML"
+    )

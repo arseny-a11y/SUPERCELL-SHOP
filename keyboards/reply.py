@@ -18,7 +18,9 @@ def admin_menu() -> ReplyKeyboardMarkup:
     kb.add(
         KeyboardButton(text="📥 Загрузить (.txt) файл товаров"),
         KeyboardButton(text="📊 Статистика"),
-        KeyboardButton(text="📦 Управление товарами")
+        KeyboardButton(text="📦 Управление товарами"),
+        KeyboardButton(text="👤 Рассылка"),
+        KeyboardButton(text="🎫 Создать промокод")
     )
 
     kb.adjust(1,2)

@@ -1,13 +1,16 @@
 from aiogram import Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message
-from database.models import User
-from database.queries import UserQueries
+from database.models import User, PromoCode,PromoUsage
+from database.queries import UserQueries,check_promocode
 from aiogram.types import FSInputFile #работа с изображениями
 from keyboards.reply import create_keyboard_menu
 from keyboards.inline import keyboard_support,keyboard_profile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import CallbackQuery
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from payments.crypto_pay import CryptoPay
 from config.config import settings
 
@@ -69,3 +72,61 @@ async def user_profile(message: Message, user: User):
     )
     await message.answer_photo(photo=photo,caption=text,reply_markup=keyboard_profile(),parse_mode='HTML')
 
+#активация промокода
+
+class EnterPromoState(StatesGroup):
+    waiting_for_code = State()
+
+@user_router.callback_query(F.data == "enter_promocode")
+async def enter_promocode_handler(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(EnterPromoState.waiting_for_code)
+
+    await callback.message.answer("✨ Введите промокод: ")
+
+@user_router.message(EnterPromoState.waiting_for_code)
+async def waiting_for_code_state(message: Message, state: FSMContext, session: AsyncSession):
+
+    promo_code = message.text.strip() if message.text else " "
+
+    existing = await check_promocode(session, promo_code)
+
+    if existing is None or existing.max_uses <= 0:
+        await state.clear()
+        return await message.answer("❌ Промокод не найден, либо уже активирован")
+
+    user_id = message.from_user.id
+
+    used_code = await session.scalar(select(PromoUsage).where(PromoUsage.promo_id == existing.id, PromoUsage.tg_id == user_id))
+
+    if used_code:
+        await state.clear()
+        return await message.answer("⚠️ Вы уже активировали этот промокод!")
+
+    user = await session.scalar(select(User).where(User.tg_id == user_id))
+
+    if user is None:
+        await state.clear()
+        return await message.answer("❌ Пользовалель не найден в базе")
+
+    
+    existing.max_uses -= 1
+    existing.current_uses += 1
+    user.balance += existing.reward_amount
+
+
+    create_promocode_usage = PromoUsage(
+        promo_id=existing.id,
+        tg_id=user_id
+    )
+
+
+    session.add(create_promocode_usage)
+    await session.commit()
+    await state.clear()
+
+    await message.answer(
+        f"✅ Промокод <code>{promo_code}</code> успешно активирован!\n\n"
+        f"💰 Ваш баланс пополнен на <b>{existing.reward_amount:.2f} ₽</b>\n"
+        f"🪙 Текущий баланс: <b>{user.balance:.2f} ₽</b>",
+        parse_mode="HTML",
+    )

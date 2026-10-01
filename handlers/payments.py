@@ -80,7 +80,7 @@ class TopUpBalance(StatesGroup):
 
 
 
-@router_pay.message(F.text == "Пополнить баланс 📥")
+@router_pay.message(F.text == "📥 Пополнить баланс")
 async def top_up_balance(message: Message, state: FSMContext):
     await state.set_state(TopUpBalance.waiting_for_amount)
 
