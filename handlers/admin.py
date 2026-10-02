@@ -8,8 +8,8 @@ from config.config import settings
 from keyboards.reply import admin_menu 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,func, delete
-from database.models import Categories, Items, User, Orders, PromoCode, PromoUsage
-from keyboards.inline import category_admin,create_category,delete_category_kb, keyboard_categories, cancel_mailing_kb, generation_code_kb
+from database.models import Categories, Items, User, Orders, PromoCode, PromoUsage, SubCategories
+from keyboards.inline import category_admin, keyboard_categories, cancel_mailing_kb, generation_code_kb
 from database.queries import CreatedCategories, check_promocode
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, time
@@ -36,25 +36,33 @@ async def admin_command(message: Message):
 
 class AdminUploadItems(StatesGroup):
     waiting_for_category = State()
+    waiting_for_sub_category = State()
     waiting_for_file = State()
 
 class CreateCategory(StatesGroup):
-    waiting_for_name = State() 
+    waiting_for_name = State()
+
+class CreateSubCategory(StatesGroup):
+    waiting_for_name = State()
+
 
 @admin_router.message(F.text == "📥 Загрузить (.txt) файл товаров")
 async def upload_items(message: Message, session: AsyncSession, state: FSMContext):
+    
     categories = (await session.scalars(select(Categories))).all()
-
+    is_admin = (
+        message.from_user.id == ADMIN_ID
+    )
     if not categories:
-        return await message.answer("Создайте хоть одну категорию!",reply_markup=create_category())
+        return await message.answer("Создайте хоть одну категорию!",reply_markup=keyboard_categories(categories,is_admin))
 
     
     await state.set_state(AdminUploadItems.waiting_for_category)
     await message.answer("Выберите категорию, в которую будут загружены товары:", reply_markup=category_admin(categories))
 
-@admin_router.callback_query(AdminUploadItems.waiting_for_category, F.data.startswith("admin_cat_"))
+@admin_router.callback_query(AdminUploadItems.waiting_for_category, F.data.startswith("admin_cat"))
 async def category_selected(callback: CallbackQuery, state: FSMContext,):
-    cat_id = int(callback.data.split("_")[-1])
+    cat_id = int(callback.data.split(":")[-1])
     await state.update_data(cat_id=cat_id)
 
     await state.set_state(AdminUploadItems.waiting_for_file)
@@ -65,27 +73,9 @@ async def category_selected(callback: CallbackQuery, state: FSMContext,):
         "Формат строки:\n"
         "<code>Название | Описание | Цена | Данные_товара</code>",
         parse_mode="HTML",
-        reply_markup=delete_category_kb(cat_id)
     )  
 
     await callback.answer()
-
-@admin_router.callback_query(F.data.startswith("del_cat"))
-async def delete_category(callback: CallbackQuery, session: AsyncSession):
-    cat_id = int(callback.data.split(":")[-1])
-
-    query = (select(Categories).where(Categories.id == cat_id))
-    result = await session.execute(query)
-    category = result.scalar_one_or_none()
-
-    if not category:
-        return await callback.answer("Категория уже удалена или не найдена.", show_alert=True)
-
-    await session.delete(category)
-    await session.commit()
-
-    await callback.answer("Категория успешно удалена!")
-    await callback.message.edit_text(f"✅ Категория #{cat_id} удалена.")
 
 
 @admin_router.message(AdminUploadItems.waiting_for_file, F.document)
@@ -144,21 +134,6 @@ async def upload_items(message: Message, state: FSMContext, session: AsyncSessio
     await message.answer(f"✅ Успешно добавлено товаров: <b>{len(products)}</b> шт.", parse_mode="HTML")
 
 
-@admin_router.callback_query(F.data == "create_category")
-async def created_category_button(callback: CallbackQuery,state: FSMContext):
-    await state.set_state(CreateCategory.waiting_for_name)
-    await callback.message.edit_text("💬 Введите название категории: ")
-    await callback.answer()
-@admin_router.message(CreateCategory.waiting_for_name)
-async def created_category_fsm(message: Message, state: FSMContext, session: AsyncSession):
-    category_name = message.text.strip()
-    if not category_name:
-        return await message.answer("❌ Название категории не может быть пустым")
-    
-    await CreatedCategories.new_category(session, category_name)
-
-    await message.answer(f"✅ Категория «{category_name}» создана!")
-    await state.clear()
 
 
 @admin_router.callback_query(F.data == "admin_cancel_upload")
@@ -224,8 +199,49 @@ async def sales_stats(message: Message, session: AsyncSession):
 #управление товарами
 @admin_router.message(F.text == "📦 Управление товарами")
 async def product_managment(message: Message, session: AsyncSession):
+    is_admin = (
+        message.from_user.id == ADMIN_ID
+    )
     all_categories = await session.scalars(select(Categories))
-    await message.answer(text="Выберите категорию для управления 📦", reply_markup=keyboard_categories(all_categories))
+
+    await message.answer(text="Выберите категорию для управления 📦", reply_markup=keyboard_categories(all_categories,is_admin))
+
+#удаление категории
+@admin_router.callback_query(F.data.startswith("del_cat"))
+async def delete_category(callback: CallbackQuery, session: AsyncSession):
+    cat_id = int(callback.data.split(":")[-1])
+
+    query = (select(Categories).where(Categories.id == cat_id))
+    result = await session.execute(query)
+    category = result.scalar_one_or_none()
+
+    if not category:
+        return await callback.answer("Категория уже удалена или не найдена.", show_alert=True)
+
+    await session.delete(category)
+    await session.commit()
+
+    await callback.answer("Категория успешно удалена!")
+    await callback.message.edit_text(f"✅ Категория #{cat_id} удалена.")
+
+#удаление подкатегории
+@admin_router.callback_query(F.data.startswith("delete_sub_cat"))
+async def delete_sub_category(callback: CallbackQuery, session: AsyncSession):
+    sub_category_id = int(callback.data.split(":")[-1])
+
+    query = select(SubCategories).where(SubCategories.id == sub_category_id)
+    result = await session.execute(query)
+    sub_category = result.scalar_one_or_none()
+
+    if not sub_category:
+        return await callback.answer("Категория уже удалена или не найдена.", show_alert=True)
+
+    await session.delete(sub_category)
+    await session.commit()
+
+    await callback.answer("Подкатегория успешно удалена!")
+    await callback.message.edit_text(f"✅ Подкатегория #{sub_category_id} удалена.")
+    
 
 #ловит callback: admin_delete_item, для удаления конкретного товара
 @admin_router.callback_query(F.data.startswith("admin_delete_item"))
@@ -247,6 +263,72 @@ async def delete_item(callback: CallbackQuery, session: AsyncSession):
     else:
         await callback.answer("✅ Товар успешно удалён!", show_alert=True)
         await callback.message.edit_text("🗑 Товар был удалён из категории.")
+
+
+#создание категории
+@admin_router.callback_query(F.data == "create_category")
+async def created_category_button(callback: CallbackQuery,state: FSMContext):
+
+    await state.set_state(CreateCategory.waiting_for_name)
+    await callback.message.edit_text("💬 Введите название категории: ")
+    await callback.answer()
+
+
+@admin_router.message(CreateCategory.waiting_for_name)
+async def created_category_fsm(message: Message, state: FSMContext, session: AsyncSession):
+    text = message.text.strip() if message.text else ""
+
+    if not text:
+        return await message.answer("❌ Название категории должно быть строкой")
+    
+    category_name = text
+    
+    await CreatedCategories.new_categories(session, category_name)
+
+    await message.answer(f"✅ Категория «{category_name}» создана!")
+    await state.clear()
+
+
+#создание подкатегорий
+@admin_router.callback_query(F.data.startswith("create_sub_cat"))
+async def create_sub_category(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+
+    category_id = int(callback.data.split(":")[-1])
+    await state.update_data(category_id=category_id)
+
+    await state.set_state(CreateSubCategory.waiting_for_name)
+
+    await callback.message.edit_text("💬 Введите название подкатегории: ")
+    await callback.answer()
+
+@admin_router.message(CreateSubCategory.waiting_for_name)
+async def created_sub_category_fsm(message: Message, state: FSMContext, session: AsyncSession):
+
+    
+    text = message.text.strip() if message.text else ""
+
+    if not text:
+        return await message.answer("❌ Название подкатегории должно быть строкой")
+
+    data = await state.get_data()
+    category_id = data.get("category_id")
+
+    if not category_id:
+        await state.clear()
+        return await message.answer(
+            "⚠️ Ошибка сессии: ID категории утерян. Попробуйте снова."
+        )
+    
+    sub_category_name = text
+  
+    await CreatedCategories.new_sub_categories(session, sub_category_name,category_id)
+    
+    await state.clear()
+
+    await message.answer(
+        f"✅ Подкатегория <b>{text}</b> успешно создана!",
+        parse_mode="HTML"
+    )
 
 #рассылка пользователям
 class UserMailingState(StatesGroup):

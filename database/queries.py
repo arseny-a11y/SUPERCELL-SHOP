@@ -1,6 +1,6 @@
 from sqlalchemy import select,func
 from sqlalchemy.ext.asyncio import AsyncSession
-from database.models import User, Categories, Items, PromoCode,PromoUsage
+from database.models import User, Categories, Items, PromoCode,PromoUsage, SubCategories
 import math
 
 class UserQueries():
@@ -41,9 +41,17 @@ class ProductsQueries():
 class CreatedCategories():
     @staticmethod
 
-    async def new_category(session: AsyncSession, name: str):
+    async def new_categories(session: AsyncSession, name: str):
         category = Categories(name=name)
         session.add(category)
+        await session.commit()
+
+    async def new_sub_categories(session: AsyncSession, name: str, category_id: int):
+        sub_category = SubCategories(
+            name=name,
+            category_id=category_id
+        )
+        session.add(sub_category)
         await session.commit()
 
 async def check_promocode(session: AsyncSession, promo_code):

@@ -39,11 +39,20 @@ class Categories(Base):
     is_active: Mapped[bool] = mapped_column(default=True)
 
 
+class SubCategories(Base):
+    __tablename__ = 'sub_categories'
+
+    id: Mapped[all_id]
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"))
+    name: Mapped[str]
+    is_active: Mapped[bool] = mapped_column(default=True)
+
+
 class Items(Base):
     __tablename__ = 'items'
 
     id: Mapped[all_id]
-    category_id: Mapped[int] = mapped_column(ForeignKey('categories.id'))
+    category_id: Mapped[int] = mapped_column(ForeignKey('sub_categories.id', ondelete="CASCADE"))
     title: Mapped[str]
     description: Mapped[str] = mapped_column(Text)
     price: Mapped[Decimal] = mapped_column(Numeric(10,2))

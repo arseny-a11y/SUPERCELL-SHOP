@@ -25,6 +25,9 @@ def keyboard_profile() -> InlineKeyboardMarkup:
 class CategoryCD(CallbackData,prefix='cat'):
     category_id: int
 
+class SubCategoryCD(CallbackData, prefix='sub_cat'):
+    sub_category_id: int
+
 class ItemsCD(CallbackData,prefix='prod'):
     item_id: int
 
@@ -40,24 +43,31 @@ class ItemsPageCD(CallbackData,prefix='items_page'):
 #     item_id: int
 
 
-def keyboard_categories(categories: list) -> InlineKeyboardMarkup:
+def keyboard_categories(categories: list, is_admin: bool = False) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
     for cat in categories:
         kb.button(text=cat.name,callback_data=CategoryCD(category_id=cat.id).pack())
+    if is_admin:
+        kb.button(text="📦 Создать категорию",callback_data="create_category")
     kb.adjust(1)
     return kb.as_markup()
 
-#меню со списком товаров + кнопка "назад"
 
-# def keyboard_items(items: list) -> InlineKeyboardMarkup:
-#     kb = InlineKeyboardBuilder()
+def sub_categories_kb(category_id: int, sub_categories: list, is_admin: bool) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
 
-#     for item in items:
-#         kb.button(text=f"{item.title} | {item.price}",callback_data=ItemsCD(item_id=item.id).pack())
-#     kb.button(text="◀️ Назад к категориям",callback_data="back_to_categories")
-#     kb.adjust(1)
-#     return kb.as_markup()
+    for sub in sub_categories:
+        kb.button(text=sub.name,callback_data=SubCategoryCD(sub_category_id=sub.id).pack())
+
+    if is_admin:
+        kb.button(text="❌ Удалить категорию", callback_data=f"del_cat:{category_id}")
+        kb.button(text="📦 Создать подкатегорию", callback_data=f"create_sub_cat:{category_id}")
+
+    kb.button(text="◀️ НАЗАД", callback_data="back_to_categories")
+
+    kb.adjust(1)
+    return kb.as_markup()
 
 def item_card_keyboard(item_id: int, category_id: int, is_admin: bool) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
@@ -77,29 +87,24 @@ def category_admin(categories: list) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
     for cat in categories:
-        kb.button(text=cat.name, callback_data=f"admin_cat_{cat.id}")
+        kb.button(text=cat.name, callback_data=f"admin_cat:{cat.id}")
     kb.button(text="❌ Отмена", callback_data="admin_cancel_upload")
-    kb.button(text="📦 Создать категорию",callback_data="create_category")
 
     kb.adjust(2)
     return kb.as_markup()
 
-#Удаление категории
-def delete_category_kb(cat_id: int) -> InlineKeyboardMarkup:
-    kb = InlineKeyboardBuilder()
-    kb.button(text="❌ Удалить категорию",callback_data=f"del_cat:{cat_id}")
-
-    return kb.as_markup()
-
-def create_category() -> InlineKeyboardMarkup:
+def sub_category_admin(sub_categories: list) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
-    kb.button(text="📦 Создать категорию",callback_data="create_category")
+    for sub in sub_categories:
+        kb.button(text=sub.name, callback_data=f"admin_sub_cat:{sub.id}")
+        
+    kb.button(text="❌ Отмена", callback_data="admin_cancel_upload_sub")
+    
+    kb.adjust(2)
     return kb.as_markup()
 
-# пролистывание меню по стрелочкам <>
-
-def items_pagination_keyboards(page: int, total_page: int, category_id: int, items: list,) -> InlineKeyboardMarkup:
+def items_pagination_keyboards(page: int, total_page: int, category_id: int, items: list, is_admin: bool = False) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
     for item in items:
@@ -144,8 +149,15 @@ def items_pagination_keyboards(page: int, total_page: int, category_id: int, ite
 
     kb.row(
         InlineKeyboardButton(
-            text="◀️ Назад к категориям",
+            text="◀️ МЕНЮ",
             callback_data="back_to_categories"
+        )
+    )
+    if is_admin:
+        kb.row(
+            InlineKeyboardButton(
+            text="❌ Удалить подкатегорию",
+            callback_data=f"delete_sub_cat:{category_id}"
         )
     )
 
