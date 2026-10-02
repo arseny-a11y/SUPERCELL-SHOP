@@ -9,7 +9,7 @@ from keyboards.reply import admin_menu
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,func, delete
 from database.models import Categories, Items, User, Orders, PromoCode, PromoUsage, SubCategories
-from keyboards.inline import category_admin, keyboard_categories, cancel_mailing_kb, generation_code_kb
+from keyboards.inline import category_admin, keyboard_categories, cancel_mailing_kb, generation_code_kb, sub_category_admin
 from database.queries import CreatedCategories, check_promocode
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, time
@@ -61,29 +61,47 @@ async def upload_items(message: Message, session: AsyncSession, state: FSMContex
     await message.answer("Выберите категорию, в которую будут загружены товары:", reply_markup=category_admin(categories))
 
 @admin_router.callback_query(AdminUploadItems.waiting_for_category, F.data.startswith("admin_cat"))
-async def category_selected(callback: CallbackQuery, state: FSMContext,):
-    cat_id = int(callback.data.split(":")[-1])
-    await state.update_data(cat_id=cat_id)
+async def category_selected(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+    category_id = int(callback.data.split(":")[-1])
+
+    await state.set_state(AdminUploadItems.waiting_for_sub_category)
+
+    sub_category = (await session.scalars(select(SubCategories).where(SubCategories.category_id == category_id))).all()
+    if not sub_category:
+        await state.clear()
+        return await callback.answer("⚠️ Подкатегория не найдена", show_alert=True)
+        
+    await callback.message.edit_text(
+        "Категория выбрана.\n\n"
+        "Выберите подкатегорию:",
+        reply_markup=sub_category_admin(sub_category)
+    )
+
+    await callback.answer()
+
+@admin_router.callback_query(AdminUploadItems.waiting_for_sub_category, F.data.startswith("admin_sub_cat"))
+async def sub_category_selected(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+    sub_category_id = int(callback.data.split(":")[-1])
+    await state.update_data(sub_category_id=sub_category_id)
 
     await state.set_state(AdminUploadItems.waiting_for_file)
 
     await callback.message.edit_text(
-        "Категория выбрана.\n\n"
-        "Отправьте <b>.txt</b> файл со списком товаров документом.\n"
-        "Формат строки:\n"
-        "<code>Название | Описание | Цена | Данные_товара</code>",
+        "📂 <b>Подкатегория выбрана.</b>\n\n"
+        "Отправьте <b>.txt</b> файл со списком товаров документом.\n\n"
+        "Формат каждой строки:\n"
+        "<code>Название | Описание | Цена_продажи | Себестоимость | Данные_товара</code>\n\n"
+        "<i>Пример:</i>\n"
+        "<code>TikTok RU | Отлега 30д | 45.0 | 20.0 | login:pass:mail</code>",
         parse_mode="HTML",
-    )  
-
-    await callback.answer()
-
+    )
 
 @admin_router.message(AdminUploadItems.waiting_for_file, F.document)
 async def upload_items(message: Message, state: FSMContext, session: AsyncSession, bot: Bot):
     if not message.document.file_name.endswith(".txt"):
         return await message.answer("❌ Отправьте файл с расширением (.txt)")
 
-    category_id = await state.get_data()
+    data_fsm = await state.get_data()
     document = message.document
     file_in_io = io.BytesIO()
 
@@ -114,11 +132,11 @@ async def upload_items(message: Message, state: FSMContext, session: AsyncSessio
             clean_price = Decimal(price.replace(",", "."))
             clean_purchase_price = Decimal(purchase_price.replace(",", "."))
         except InvalidOperation:
-            return await message.answer(f"❌ Ошибка: Цена не является цислом в строке {num}")
+            return await message.answer(f"❌ Ошибка: Цена не является числом в строке {num}")
 
         products.append(
             Items(
-                 category_id=category_id["cat_id"],
+                 category_id=data_fsm["sub_category_id"],
                  title=title,
                  description=desc,
                  price=clean_price,
