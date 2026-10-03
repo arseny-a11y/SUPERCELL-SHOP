@@ -76,6 +76,9 @@ def item_card_keyboard(item_id: int, category_id: int, is_admin: bool) -> Inline
     kb.button(text="◀️ Назад к списку",callback_data=CategoryCD(category_id=category_id).pack())
 
     if is_admin:
+        kb.button(text="✏️ Редактировать данные", callback_data=f"admin_edit_data:{item_id}")
+        kb.button(text="✏️ Редактировать стоимость",callback_data=f"admin_edit_price:{item_id}")
+
         kb.button(text="❌ Удалить товар", callback_data=f"admin_delete_item:{item_id}")
         
 

@@ -176,7 +176,6 @@ async def check_payment(callback: CallbackQuery,session: AsyncSession):
 
 
 #Оплата конкретного товара
-
 @router_pay.callback_query(BuyCD.filter())
 async def buy_product(
     callback: CallbackQuery, callback_data: BuyCD, session: AsyncSession

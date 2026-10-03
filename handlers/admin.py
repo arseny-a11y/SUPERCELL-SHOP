@@ -7,7 +7,7 @@ from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from config.config import settings
 from keyboards.reply import admin_menu 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select,func, delete
+from sqlalchemy import select,func, delete, update
 from database.models import Categories, Items, User, Orders, PromoCode, PromoUsage, SubCategories
 from keyboards.inline import category_admin, keyboard_categories, cancel_mailing_kb, generation_code_kb, sub_category_admin
 from database.queries import CreatedCategories, check_promocode
@@ -34,6 +34,7 @@ admin_router.callback_query.filter(IsAdmin())
 async def admin_command(message: Message):
     await message.answer('Панель администратора открыта🫡',reply_markup=admin_menu())
 
+#FSM состояние для загрузки товаров 
 class AdminUploadItems(StatesGroup):
     waiting_for_category = State()
     waiting_for_sub_category = State()
@@ -44,6 +45,17 @@ class CreateCategory(StatesGroup):
 
 class CreateSubCategory(StatesGroup):
     waiting_for_name = State()
+
+#FSM состояние данных промокода
+class PromoCodeState(StatesGroup):
+    waiting_for_code = State()
+    waiting_for_max_uses = State()
+    waiting_for_amount = State()
+
+#FSM состояние для редактирования товаров
+class EditProductState(StatesGroup):
+    waiting_for_data = State()
+    waiting_for_price = State()
 
 
 @admin_router.message(F.text == "📥 Загрузить (.txt) файл товаров")
@@ -348,6 +360,99 @@ async def created_sub_category_fsm(message: Message, state: FSMContext, session:
         parse_mode="HTML"
     )
 
+#редактирование данных товара
+@admin_router.callback_query(F.data.startswith("admin_edit_data"))
+async def edit_data_product(callback: CallbackQuery, state: FSMContext):
+    item_id = int(callback.data.split(":")[-1])
+    await state.update_data(item_id=item_id)
+
+    await state.set_state(EditProductState.waiting_for_data)
+
+    await callback.message.answer(f"💬 Введите новые данные товара: ")
+
+
+@admin_router.message(EditProductState.waiting_for_data)
+async def edit_data_product_fsm(message: Message, state: FSMContext, session: AsyncSession):
+    text = message.text.strip() if message.text.strip() else ""
+
+    if not text:
+        return await message.answer(f"❌ Данные товара должны быть строкой")
+
+    new_data = text
+    data_fsm = await state.get_data()
+    item_id = data_fsm.get("item_id")
+
+    if not item_id:
+        await state.clear()
+        return await message.answer(
+            "⚠️ Ошибка: ID товара утерян. Попробуйте снова."
+        )
+    
+    item = await session.get(Items, item_id)
+    if not item:
+        await state.clear()
+        return await message.answer("❌ Товар не найден в базе данных.")
+
+    item.data = new_data
+
+    await session.commit()
+    await state.clear()
+
+    await message.answer(
+        f"✅ Данные товара <b>#{item.id}</b> успешно обновлены на: {new_data}",
+        parse_mode="HTML",
+    )
+
+
+#редактирование цены товара
+@admin_router.callback_query(F.data.startswith("admin_edit_price"))
+async def edit_price_product(callback: CallbackQuery, state: FSMContext):
+    item_id = int(callback.data.split(":")[-1])
+    await state.update_data(item_id=item_id)
+
+    await state.set_state(EditProductState.waiting_for_price)
+
+    await callback.message.answer(f"💬 Введите новую стоимость товара: ")
+
+@admin_router.message(EditProductState.waiting_for_price)
+async def edit_price_product_fsm(message: Message, state: FSMContext, session: AsyncSession):
+    text = (message.text or "").strip()
+
+    # 1. Проверяем валидность целого числа и длину
+    if not text.isdigit() or len(text) > 6:
+        return await message.answer(
+            "❌ Стоимость товара должна быть целым положительным числом (например: <code>150</code>)",
+            parse_mode="HTML",
+        )
+
+    clean_price = Decimal(text)
+    if clean_price <= 0:
+        return await message.answer("❌ Стоимость товара должна быть больше 0.")
+
+    data_fsm = await state.get_data()
+    item_id = data_fsm.get("item_id")
+
+    if not item_id:
+        await state.clear()
+        return await message.answer(
+            "⚠️ Ошибка: ID товара утерян. Попробуйте снова."
+        )
+
+    item = await session.get(Items, item_id)
+    if not item:
+        await state.clear()
+        return await message.answer("❌ Товар не найден в базе данных.")
+
+    item.price = clean_price
+
+    await session.commit()
+    await state.clear()
+
+    await message.answer(
+        f"✅ Стоимость товара <b>#{item.id}</b> успешно обновлена на: <b>{clean_price:.2f} ₽</b>!",
+        parse_mode="HTML",
+    )
+
 #рассылка пользователям
 class UserMailingState(StatesGroup):
     waiting_for_message = State()
@@ -429,11 +534,6 @@ async def generation_promo_code(session: AsyncSession, length: int = 8):
             return promo_code
 
 
-#FSM состояния данных промокода
-class PromoCodeState(StatesGroup):
-    waiting_for_code = State()
-    waiting_for_max_uses = State()
-    waiting_for_amount = State()
 
 #handler обработки нажатия кнопки и открытие FSM состояния
 @admin_router.message(F.text == "🎫 Создать промокод")
