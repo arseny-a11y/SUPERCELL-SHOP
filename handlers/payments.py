@@ -212,6 +212,7 @@ async def buy_product(
     # 5. Создаем заказ
     new_order = Orders(
         user_id=user.tg_id,
+        name=item.title,
         item_id=item.id,
         price=item.price,
         purchase_price=item.purchase_price,

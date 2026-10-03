@@ -1,7 +1,7 @@
 from aiogram import Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message
-from database.models import User, PromoCode,PromoUsage
+from database.models import User, PromoCode,PromoUsage, Orders
 from database.queries import UserQueries,check_promocode
 from aiogram.types import FSInputFile #работа с изображениями
 from keyboards.reply import create_keyboard_menu
@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from payments.crypto_pay import CryptoPay
 from config.config import settings
+from html import escape
 
 
 user_router = Router()
@@ -130,3 +131,35 @@ async def waiting_for_code_state(message: Message, state: FSMContext, session: A
         f"🪙 Текущий баланс: <b>{user.balance:.2f} ₽</b>",
         parse_mode="HTML",
     )
+
+#История покупок
+@user_router.callback_query(F.data == "history_purchases")
+async def history_purchases_handler(callback: CallbackQuery, session: AsyncSession):
+    user_id = callback.from_user.id
+
+    all_purchases = []
+    query = (await session.scalars(select(Orders).where(Orders.user_id == user_id))).all()
+
+    if not query:
+        return await callback.answer("У вас еще нет совершенных покупок.", show_alert=True)
+        
+    
+
+    for count, q in enumerate(query, start=1):
+        title = escape(q.name)
+        data = escape(q.item_data)
+        price = int(q.price)
+
+        all_purchases.append(
+            f"<b>{count}. {title}</b> — <code>{price} ₽</code>\n"
+            f"📦 <b>Данные:</b>\n"
+            f"<code>{data}</code>"
+        )
+
+    text = (
+        "📜 <b>История последних покупок:</b>\n\n"
+        + "\n───────────────\n".join(all_purchases)
+    )
+
+    await callback.message.answer(text=text,parse_mode="HTML")
+    await callback.answer()

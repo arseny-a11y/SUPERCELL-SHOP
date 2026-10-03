@@ -1,6 +1,6 @@
-from aiogram.filters import BaseFilter, Command
+from aiogram.filters import BaseFilter, Command, StateFilter
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery, TelegramObject
+from aiogram.types import Message, CallbackQuery, TelegramObject, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
@@ -57,6 +57,19 @@ class EditProductState(StatesGroup):
     waiting_for_data = State()
     waiting_for_price = State()
 
+#отмена загрузки в категорию
+@admin_router.callback_query(
+        F.data == "admin_cancel_upload",
+        StateFilter(
+        AdminUploadItems.waiting_for_category,
+        AdminUploadItems.waiting_for_sub_category,
+        AdminUploadItems.waiting_for_file
+            )
+        )
+async def cancel_upload(callback: CallbackQuery, state: FSMContext):
+   await state.clear()
+   await callback.message.edit_text("🚫 Загрузка отменена")
+   await callback.answer()
 
 @admin_router.message(F.text == "📥 Загрузить (.txt) файл товаров")
 async def upload_items(message: Message, session: AsyncSession, state: FSMContext):
@@ -72,6 +85,7 @@ async def upload_items(message: Message, session: AsyncSession, state: FSMContex
     await state.set_state(AdminUploadItems.waiting_for_category)
     await message.answer("Выберите категорию, в которую будут загружены товары:", reply_markup=category_admin(categories))
 
+
 @admin_router.callback_query(AdminUploadItems.waiting_for_category, F.data.startswith("admin_cat"))
 async def category_selected(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     category_id = int(callback.data.split(":")[-1])
@@ -81,7 +95,7 @@ async def category_selected(callback: CallbackQuery, state: FSMContext, session:
     sub_category = (await session.scalars(select(SubCategories).where(SubCategories.category_id == category_id))).all()
     if not sub_category:
         await state.clear()
-        return await callback.answer("⚠️ Подкатегория не найдена", show_alert=True)
+        return await callback.message.edit_text("⚠️ В этой категории нет подкатегорий. Создайте подкатегорию перед загрузкой.")
         
     await callback.message.edit_text(
         "Категория выбрана.\n\n"
@@ -91,12 +105,19 @@ async def category_selected(callback: CallbackQuery, state: FSMContext, session:
 
     await callback.answer()
 
+
 @admin_router.callback_query(AdminUploadItems.waiting_for_sub_category, F.data.startswith("admin_sub_cat"))
 async def sub_category_selected(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     sub_category_id = int(callback.data.split(":")[-1])
     await state.update_data(sub_category_id=sub_category_id)
 
     await state.set_state(AdminUploadItems.waiting_for_file)
+
+    cancel_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_cancel_upload")]
+        ]
+    )
 
     await callback.message.edit_text(
         "📂 <b>Подкатегория выбрана.</b>\n\n"
@@ -106,10 +127,12 @@ async def sub_category_selected(callback: CallbackQuery, state: FSMContext, sess
         "<i>Пример:</i>\n"
         "<code>TikTok RU | Отлега 30д | 45.0 | 20.0 | login:pass:mail</code>",
         parse_mode="HTML",
+        reply_markup=cancel_kb
     )
 
+
 @admin_router.message(AdminUploadItems.waiting_for_file, F.document)
-async def upload_items(message: Message, state: FSMContext, session: AsyncSession, bot: Bot):
+async def upload_items_file(message: Message, state: FSMContext, session: AsyncSession, bot: Bot):
     if not message.document.file_name.endswith(".txt"):
         return await message.answer("❌ Отправьте файл с расширением (.txt)")
 
@@ -163,14 +186,6 @@ async def upload_items(message: Message, state: FSMContext, session: AsyncSessio
     await state.clear()   
     await message.answer(f"✅ Успешно добавлено товаров: <b>{len(products)}</b> шт.", parse_mode="HTML")
 
-
-
-
-@admin_router.callback_query(F.data == "admin_cancel_upload")
-async def cancel_upload(callback: CallbackQuery, state: FSMContext):
-   await state.clear()
-   await callback.message.edit_text("Загрузка отменена ❌")
-   await callback.answer()
 
 
 #Статистика продаж
@@ -368,12 +383,18 @@ async def edit_data_product(callback: CallbackQuery, state: FSMContext):
 
     await state.set_state(EditProductState.waiting_for_data)
 
-    await callback.message.answer(f"💬 Введите новые данные товара: ")
+    cancel_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_edit_data")]
+        ]
+    )
 
+    await callback.message.answer(f"💬 Введите новые данные товара: ",reply_markup=cancel_kb)
+    await callback.answer()
 
 @admin_router.message(EditProductState.waiting_for_data)
 async def edit_data_product_fsm(message: Message, state: FSMContext, session: AsyncSession):
-    text = message.text.strip() if message.text.strip() else ""
+    text = (message.text or "").strip()
 
     if not text:
         return await message.answer(f"❌ Данные товара должны быть строкой")
@@ -399,10 +420,9 @@ async def edit_data_product_fsm(message: Message, state: FSMContext, session: As
     await state.clear()
 
     await message.answer(
-        f"✅ Данные товара <b>#{item.id}</b> успешно обновлены на: {new_data}",
+        f"✅ Данные товара <b>#{item.id}</b> успешно обновлены на: <code>{new_data}</code>",
         parse_mode="HTML",
     )
-
 
 #редактирование цены товара
 @admin_router.callback_query(F.data.startswith("admin_edit_price"))
@@ -412,8 +432,16 @@ async def edit_price_product(callback: CallbackQuery, state: FSMContext):
 
     await state.set_state(EditProductState.waiting_for_price)
 
-    await callback.message.answer(f"💬 Введите новую стоимость товара: ")
+    cancel_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_edit_price")]
+        ]
+    )
 
+
+    await callback.message.answer(f"💬 Введите новую стоимость товара: ",reply_markup=cancel_kb)
+    await callback.answer()
+    
 @admin_router.message(EditProductState.waiting_for_price)
 async def edit_price_product_fsm(message: Message, state: FSMContext, session: AsyncSession):
     text = (message.text or "").strip()
@@ -453,9 +481,30 @@ async def edit_price_product_fsm(message: Message, state: FSMContext, session: A
         parse_mode="HTML",
     )
 
+# Один хэндлер на обе отмены редактирования товаров
+@admin_router.callback_query(
+    F.data.in_(["cancel_edit_data", "cancel_edit_price"]),
+    StateFilter(
+        EditProductState.waiting_for_data, EditProductState.waiting_for_price
+    ),
+)
+async def cancel_edit_product_process(
+    callback: CallbackQuery, state: FSMContext
+):
+    await state.clear()
+    await callback.message.edit_text("🚫 Редактирование товара отменено.")
+    await callback.answer()
+
 #рассылка пользователям
 class UserMailingState(StatesGroup):
     waiting_for_message = State()
+
+
+#отмена рассылки пользователям
+@admin_router.callback_query(F.data == "cancel_mailing", UserMailingState.waiting_for_message)
+async def cancel_mailing(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text("🚫 Рассылка отменена.")
 
 @admin_router.message(F.text == "👤 Рассылка")
 async def user_mailing(message: Message, state: FSMContext):
@@ -464,7 +513,6 @@ async def user_mailing(message: Message, state: FSMContext):
 
 @admin_router.message(UserMailingState.waiting_for_message)
 async def user_mailing_state(message: Message, state: FSMContext, session: AsyncSession, bot: Bot):
-    message_for_mailing = message.text
     await state.clear()
 
     ids_all_users = (await session.scalars(select(User.tg_id))).all()
@@ -481,7 +529,7 @@ async def user_mailing_state(message: Message, state: FSMContext, session: Async
         if chat_id == settings.ADMIN_ID:
             continue
         try:
-            await bot.send_message(chat_id=chat_id,text=message_for_mailing,parse_mode="HTML")
+            await message.copy_to(chat_id=chat_id)
             send_success += 1
 
             await asyncio.sleep(0.05)
@@ -493,7 +541,7 @@ async def user_mailing_state(message: Message, state: FSMContext, session: Async
         except TelegramRetryAfter as e:
             await asyncio.sleep(e.retry_after)
 
-            await bot.send_message(chat_id=chat_id,text=message_for_mailing,parse_mode="HTML")
+            await message.copy_to(chat_id=chat_id)
             send_success += 1
 
         except Exception:
@@ -510,14 +558,8 @@ async def user_mailing_state(message: Message, state: FSMContext, session: Async
     parse_mode="HTML",
     )
 
-#отмена рассылки пользователям
-@admin_router.callback_query(F.data == "cancel_mailing")
-async def cancel_mailing(callback: CallbackQuery, state: FSMContext):
-    await state.clear()
-    await callback.message.edit_text("❌ Рассылка отменена.")
 
 #создание промокодов
-
 
 #async функция по генерации промокодов и проверка существования в базе
 async def generation_promo_code(session: AsyncSession, length: int = 8):
@@ -534,6 +576,15 @@ async def generation_promo_code(session: AsyncSession, length: int = 8):
             return promo_code
 
 
+#отмена создания промокода
+@admin_router.callback_query(
+        F.data == "cancel_promocode",
+        StateFilter(PromoCodeState)
+        )
+async def cancel_promocode(callback: CallbackQuery, state: FSMContext):
+   await state.clear()
+   await callback.message.edit_text("🚫 Создание промокода отменено")
+   await callback.answer()
 
 #handler обработки нажатия кнопки и открытие FSM состояния
 @admin_router.message(F.text == "🎫 Создать промокод")
@@ -559,11 +610,11 @@ async def generation_code(callback: CallbackQuery, state: FSMContext, session: A
 async def waiting_for_promocode(message: Message, state: FSMContext, session: AsyncSession):
 
     if not message.text:
-        await message.answer("⚠️ Пожалуйста, отправьте промокод текстом (8 символов):")
+        return await message.answer("⚠️ Пожалуйста, отправьте промокод текстом (8 символов):")
 
     promo_code = message.text.strip().upper()
 
-    if len(promo_code) > 8 or len(promo_code) < 8:
+    if len(promo_code) != 8:
         return await message.answer("⚠️ Промокод должен содержать 8 символов. Попробуйте еще раз:")
 
     existing = await check_promocode(session, promo_code)
@@ -605,6 +656,13 @@ async def max_uses(message: Message, state: FSMContext):
             "⚠️ Слишком большое число. Введите значение до 100 000:"
         )
 
+    cancel_kb = InlineKeyboardMarkup(
+    inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_promocode")]
+        ]
+    )
+
+
     await state.update_data(max_uses=uses_count)
     await state.set_state(PromoCodeState.waiting_for_amount)
 
@@ -612,6 +670,7 @@ async def max_uses(message: Message, state: FSMContext):
         f"✅ Лимит использований: <b>{uses_count}</b>\n\n"
         f"Теперь укажите <b>сумму награды</b> (целое число):",
         parse_mode="HTML",
+        reply_markup=cancel_kb
     )
 
 

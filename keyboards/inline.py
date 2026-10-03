@@ -13,7 +13,7 @@ def keyboard_support() -> InlineKeyboardMarkup:
 def keyboard_profile() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
-    kb.button(text='📂 История покупок',callback_data='purchases')
+    kb.button(text='📂 История покупок',callback_data='history_purchases')
     kb.button(text='📥 Пополнить баланс',callback_data='top_up_balance')
     kb.button(text="🎫 Ввести промокод", callback_data="enter_promocode")
 
@@ -103,7 +103,7 @@ def sub_category_admin(sub_categories: list) -> InlineKeyboardMarkup:
     for sub in sub_categories:
         kb.button(text=sub.name, callback_data=f"admin_sub_cat:{sub.id}")
         
-    kb.button(text="❌ Отмена", callback_data="admin_cancel_upload_sub")
+    kb.button(text="❌ Отмена", callback_data="admin_cancel_upload")
     
     kb.adjust(2)
     return kb.as_markup()
@@ -204,5 +204,7 @@ def cancel_mailing_kb() -> InlineKeyboardMarkup:
 def generation_code_kb() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text="✨Сгенерировать✨",callback_data="gen_code")
+    kb.button(text="❌ Отмена",callback_data="cancel_promocode")
 
+    kb.adjust(1)
     return kb.as_markup()

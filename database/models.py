@@ -66,6 +66,7 @@ class Orders(Base):
 
     id: Mapped[all_id]
     user_id: Mapped[user_tg_id] = mapped_column(ForeignKey('users.id'))
+    name: Mapped[str] = mapped_column(nullable=False, default="Товар")
     item_id: Mapped[int] = mapped_column(ForeignKey('items.id'))
     price: Mapped[Decimal] = mapped_column(Numeric(10,2))
     purchase_price: Mapped[Decimal] = mapped_column(Numeric(10,2), nullable=False)
