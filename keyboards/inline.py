@@ -77,6 +77,7 @@ def item_card_keyboard(item_id: int, category_id: int, is_admin: bool) -> Inline
 
     if is_admin:
         kb.button(text="❌ Удалить товар", callback_data=f"admin_delete_item:{item_id}")
+        
 
     kb.adjust(1)
     return kb.as_markup()

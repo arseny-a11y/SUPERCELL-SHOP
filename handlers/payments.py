@@ -80,7 +80,7 @@ class TopUpBalance(StatesGroup):
 
 
 
-@router_pay.message(F.text == "📥 Пополнить баланс")
+@router_pay.message(F.text == "Пополнить баланс 📥")
 async def top_up_balance(message: Message, state: FSMContext):
     await state.set_state(TopUpBalance.waiting_for_amount)
 
@@ -94,13 +94,20 @@ async def top_up_balance(callback: CallbackQuery, state: FSMContext):
 
 @router_pay.message(TopUpBalance.waiting_for_amount)
 async def process_top_up(message: Message, state: FSMContext):
+    MIN_AMOUNT = 50
+    MAX_AMOUNT = 10_000
+
     amount = message.text
 
-    if not amount.isdigit():
+    if not amount.isdigit() or len(amount) > 6:
         return await message.answer("❌ Пожалуйста, введите целое положительное число")
 
-    if int(amount) < 50:
+    if int(amount) < MIN_AMOUNT:
         return await message.answer("❌ Минимальная сумма поплнения - 50 ₽")
+    
+    if int(amount) > MAX_AMOUNT:
+        return await message.answer("❌ Максимальная сумма пополнения за одну транзакцию- 10.000 ₽")
+    
     await state.clear()
 
     invoice = await crypto.create_invoice(
