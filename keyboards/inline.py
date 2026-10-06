@@ -72,8 +72,9 @@ def sub_categories_kb(category_id: int, sub_categories: list, is_admin: bool) ->
 def item_card_keyboard(item_id: int, category_id: int, is_admin: bool) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
-    kb.button(text="💳 Купить", callback_data=BuyCD(item_id=item_id).pack())
+    kb.button(text="💳 Купить", callback_data=f"buy_item:{item_id}")
     kb.button(text="◀️ Назад к списку",callback_data=CategoryCD(category_id=category_id).pack())
+
 
     if is_admin:
         kb.button(text="✏️ Редактировать данные", callback_data=f"admin_edit_data:{item_id}")
@@ -85,7 +86,15 @@ def item_card_keyboard(item_id: int, category_id: int, is_admin: bool) -> Inline
     kb.adjust(1)
     return kb.as_markup()
 
+def confirm_buy_item(item_id: int, category_id: int) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
 
+    kb.button(text="✅ Купить", callback_data=BuyCD(item_id=item_id).pack())
+    kb.button(text="❌ Отмена",callback_data=CategoryCD(category_id=category_id).pack())
+
+    kb.adjust(1)
+
+    return kb.as_markup()
 #категории товаров для админа
 def category_admin(categories: list) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
@@ -184,9 +193,10 @@ def items_pagination_keyboards(page: int, total_page: int, category_id: int, ite
 def top_up_balance_crypto_kb(amount: int, invoice: dict) -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
+    invoice_id = invoice.get('invoice_id')
     kb.button(text=f"🪪 Оплатить {amount} ₽",url=invoice["bot_invoice_url"])
-    kb.button(text="Проверить оплату",callback_data=f"check_pay_crypto:{invoice.get('invoice_id')}")
-
+    kb.button(text="Проверить оплату",callback_data=f"check_pay_crypto:{invoice_id}")
+    kb.button(text="Отменить оплату", callback_data=f"cancel_crypto_payments:{invoice_id}")
     kb.adjust(1)
 
     return kb.as_markup()
@@ -204,7 +214,7 @@ def cancel_mailing_kb() -> InlineKeyboardMarkup:
 def generation_code_kb() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text="✨Сгенерировать✨",callback_data="gen_code")
-    kb.button(text="❌ Отмена",callback_data="cancel_promocode")
+    kb.button(text="❌ Отмена",callback_data="admin_cancel_promocode")
 
     kb.adjust(1)
     return kb.as_markup()

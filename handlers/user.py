@@ -1,6 +1,6 @@
 from aiogram import Router, F
 from aiogram.filters import CommandStart
-from aiogram.types import Message
+from aiogram.types import Message,InlineKeyboardButton,InlineKeyboardMarkup
 from database.models import User, PromoCode,PromoUsage, Orders
 from database.queries import UserQueries,check_promocode
 from aiogram.types import FSInputFile #работа с изображениями
@@ -78,22 +78,45 @@ async def user_profile(message: Message, user: User):
 class EnterPromoState(StatesGroup):
     waiting_for_code = State()
 
+#отмена ввода промокода
+@user_router.callback_query(F.data == "user_cancel_promocode", EnterPromoState.waiting_for_code)
+async def enter_cancel_promocode(callback: CallbackQuery, state: FSMContext):
+   await state.clear()
+   await callback.message.edit_text("🚫 Ввод промокода отменен")
+   await callback.answer()
+
 @user_router.callback_query(F.data == "enter_promocode")
 async def enter_promocode_handler(callback: CallbackQuery, state: FSMContext):
+
     await state.set_state(EnterPromoState.waiting_for_code)
 
-    await callback.message.answer("✨ Введите промокод: ")
+    cancel_kb = InlineKeyboardMarkup(
+    inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="user_cancel_promocode")]
+        ]
+    )
+
+    await callback.message.answer("✨ Введите промокод: ", reply_markup=cancel_kb)
+    await callback.answer()
 
 @user_router.message(EnterPromoState.waiting_for_code)
 async def waiting_for_code_state(message: Message, state: FSMContext, session: AsyncSession):
 
-    promo_code = message.text.strip() if message.text else " "
+    cancel_kb = InlineKeyboardMarkup(
+    inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="user_cancel_promocode")]
+        ]
+    )
+
+    if not message.text:
+        return await message.answer("⚠️ Отправьте промокод текстовым сообщением:")
+    
+    promo_code = message.text.strip().upper()
 
     existing = await check_promocode(session, promo_code)
 
     if existing is None or existing.max_uses <= 0:
-        await state.clear()
-        return await message.answer("❌ Промокод не найден, либо уже активирован")
+        return await message.answer("❌ Промокод не найден, либо уже исчерпан. Попробуйте еще раз или нажмите отмену:",reply_markup=cancel_kb)
 
     user_id = message.from_user.id
 
@@ -138,7 +161,7 @@ async def history_purchases_handler(callback: CallbackQuery, session: AsyncSessi
     user_id = callback.from_user.id
 
     all_purchases = []
-    query = (await session.scalars(select(Orders).where(Orders.user_id == user_id))).all()
+    query = (await session.scalars(select(Orders).where(Orders.user_id == user_id).order_by(Orders.id.desc()))).all()
 
     if not query:
         return await callback.answer("У вас еще нет совершенных покупок.", show_alert=True)

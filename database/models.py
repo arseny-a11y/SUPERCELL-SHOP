@@ -72,6 +72,7 @@ class Orders(Base):
     purchase_price: Mapped[Decimal] = mapped_column(Numeric(10,2), nullable=False)
     item_data: Mapped[str]
     purchased_at: Mapped[time_now]
+    refund: Mapped[bool] = mapped_column(default=False)
 
 class Payments(Base):
     __tablename__ = 'payments'

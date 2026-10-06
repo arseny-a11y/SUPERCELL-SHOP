@@ -1,14 +1,16 @@
 from config.config import settings
 from payments.crypto_pay import CryptoPay
-from keyboards.inline import BuyCD, top_up_balance_crypto_kb
+from keyboards.inline import BuyCD, top_up_balance_crypto_kb, confirm_buy_item
 from database.models import Items, Payments, User, Orders
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
-from aiogram import Router, F
-from aiogram.types import CallbackQuery, Message
+from aiogram import Router, F, Bot
+from aiogram.types import CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.exceptions import TelegramAPIError
 from decimal import Decimal
+import html
 
 router_pay = Router()
 crypto = CryptoPay(settings.CRYPTO_PAY_TOKEN)
@@ -79,18 +81,36 @@ class TopUpBalance(StatesGroup):
     waiting_for_amount = State()
 
 
+@router_pay.callback_query(F.data == "cancel_balance", TopUpBalance.waiting_for_amount)
+async def cancel_top_up_balance(callback: CallbackQuery, state: FSMContext):
+   await state.clear()
+   await callback.message.edit_text("🚫 Пополнение баланса отменено")
+   await callback.answer()
 
 @router_pay.message(F.text == "Пополнить баланс 📥")
-async def top_up_balance(message: Message, state: FSMContext):
-    await state.set_state(TopUpBalance.waiting_for_amount)
+async def top_up_balance_message(message: Message, state: FSMContext):
+    cancel_kb = InlineKeyboardMarkup(
+    inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_balance")]
+        ]
+    )
 
-    await message.answer("Введите сумму пополнения в рублях (минимум 50 ₽):")
+    await state.set_state(TopUpBalance.waiting_for_amount)
+    await message.answer("Введите сумму пополнения в рублях (минимум 50 ₽):", reply_markup=cancel_kb)
 
 @router_pay.callback_query(F.data == "top_up_balance")
-async def top_up_balance(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(TopUpBalance.waiting_for_amount)
+async def top_up_balance_callback(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
 
-    await callback.message.answer("Введите сумму пополнения в рублях (минимум 50 ₽):")
+    cancel_kb = InlineKeyboardMarkup(
+    inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_balance")]
+        ]
+    )
+
+
+    await state.set_state(TopUpBalance.waiting_for_amount)
+    await callback.message.answer("Введите сумму пополнения в рублях (минимум 50 ₽):", reply_markup=cancel_kb)
 
 @router_pay.message(TopUpBalance.waiting_for_amount)
 async def process_top_up(message: Message, state: FSMContext):
@@ -115,6 +135,15 @@ async def process_top_up(message: Message, state: FSMContext):
     )
 
     await message.answer(f"Счёт на сумму **{amount} ₽** сформирован. После оплаты нажмите «Проверить оплату».",reply_markup=top_up_balance_crypto_kb(amount,invoice))
+
+#отмена счета
+@router_pay.callback_query(F.data.startswith("cancel_crypto_payments"))
+async def cancel_crypto_invoice_handler(callback: CallbackQuery):
+    invoice_id = int(callback.data.split(":")[-1])
+
+    await callback.message.edit_text(f"🚫 Счет с идентификатором <code>#{invoice_id}</code> был отменен", parse_mode="HTML")
+    await callback.answer()
+
 
 @router_pay.callback_query(F.data.startswith("check_pay_crypto"))
 async def check_payment(callback: CallbackQuery,session: AsyncSession):
@@ -148,7 +177,6 @@ async def check_payment(callback: CallbackQuery,session: AsyncSession):
         payment_system="CryptoBot",
         status=invoice_status,
     )
-    session.add(new_payment)
 
     top_up_balance_user = (
         update(User).
@@ -158,8 +186,6 @@ async def check_payment(callback: CallbackQuery,session: AsyncSession):
     )
     result = await session.execute(top_up_balance_user)
     new_balance = result.scalar_one_or_none()
-
-    await session.commit()
 
 
     session.add(new_payment)
@@ -175,10 +201,43 @@ async def check_payment(callback: CallbackQuery,session: AsyncSession):
     await callback.answer()
 
 
-#Оплата конкретного товара
+#Оплата товара с подтверждением покупки
+@router_pay.callback_query(F.data.startswith("buy_item"))
+async def confirm_buy_item_handler(callback: CallbackQuery, session: AsyncSession):
+    item_id = int(callback.data.split(":")[-1])
+
+    item = await session.get(Items, item_id)
+    user = await session.scalar(select(User).where(User.tg_id == callback.from_user.id))
+
+    if not item or item.is_sold:
+        return await callback.answer("❌ Товар уже продан!", show_alert=True)
+    
+    category_id = item.category_id
+    
+    if user.balance < item.price:
+        return await callback.answer(
+            f"❌ Недостаточно средств! Нужно: {item.price:.2f} ₽, на балансе: {user.balance:.2f} ₽",
+            show_alert=True,
+        )
+    
+
+    await callback.message.edit_text(
+        f"⚠️ <b>Подтверждение покупки</b>\n\n"
+        f"📦 Товар: <b>{item.title}</b>\n"
+        f"💵 К списанию: <b>{item.price:.2f} ₽</b>\n"
+        f"🪙 Ваш баланс: <b>{user.balance:.2f} ₽</b>\n\n"
+        f"С вашего баланса спишется <b>{item.price:.2f} ₽</b>. Подтверждаете?",
+        parse_mode="HTML",
+        reply_markup=confirm_buy_item(item_id, category_id)
+    )
+
+    await callback.answer()
+
+
+#Полноценная оплата товара
 @router_pay.callback_query(BuyCD.filter())
 async def buy_product(
-    callback: CallbackQuery, callback_data: BuyCD, session: AsyncSession
+    callback: CallbackQuery, callback_data: BuyCD, session: AsyncSession, bot: Bot
 ):
     item_id = callback_data.item_id
 
@@ -217,6 +276,7 @@ async def buy_product(
         price=item.price,
         purchase_price=item.purchase_price,
         item_data=item.data,
+        
     )
     session.add(new_order)
 
@@ -224,11 +284,91 @@ async def buy_product(
 
 
     await callback.message.edit_reply_markup(reply_markup=None)
-    await callback.message.answer(
-        f"✅ **Покупка успешно совершена!**\n\n"
-        f"Списано: `{item.price} ₽`\n"
-        f"Остаток: `{user.balance} ₽`\n\n"
-        f"📦 **Данные товара:**\n`{item.data}`",
-        parse_mode="Markdown",
+
+    safe_data = html.escape(str(item.data))
+
+    await callback.message.edit_text(
+        f"✅ <b>Покупка успешно совершена!</b>\n\n"
+        f"Списано: <code>{item.price} ₽</code>\n"
+        f"Остаток: <code>{user.balance} ₽</code>\n\n"
+        f"📦 <b>Данные товара:</b>\n<pre>{safe_data}</pre>",
+        parse_mode="HTML",
     )
     await callback.answer()
+
+
+    #уведомляем админа
+    profit = item.price - (item.purchase_price or 0)
+    username_str = (
+        f"@{callback.from_user.username}"
+        if callback.from_user.username
+        else "отсутствует"
+    )
+
+    admin_text = (
+        f"🛍 <b>Новая покупка! (Заказ #{new_order.id})</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 <b>Покупатель:</b> {html.escape(callback.from_user.full_name)} (<code>{user.tg_id}</code>)\n"
+        f"🔗 <b>Username:</b> {username_str}\n"
+        f"📦 <b>Товар:</b> {html.escape(item.title)} (ID: <code>{item.id}</code>)\n"
+        f"💵 <b>Цена продажи:</b> <code>{item.price:.2f} ₽</code>\n"
+        f"📉 <b>Себестоимость:</b> <code>{item.purchase_price:.2f} ₽</code>\n"
+        f"📈 <b>Прибыль:</b> <code>+{profit:.2f} ₽</code>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━"
+    )
+
+    refund_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Возврат средств", callback_data=f"refund_user:{new_order.id}")]
+        ]
+    )
+    await bot.send_message(
+        chat_id=settings.ADMIN_ID,
+        text=admin_text,
+        parse_mode="HTML",
+        reply_markup=refund_kb
+    )
+
+#возврат средств
+@router_pay.callback_query(F.data.startswith("refund_user"))
+async def refund_handler(callback: CallbackQuery, session: AsyncSession, bot: Bot):
+    order_id = int(callback.data.split(":")[-1])
+
+    order = await session.get(Orders, order_id)
+
+    if not order:
+        return await callback.answer("❌ Заказ не найден!", show_alert=True)
+
+    if getattr(order, "refund", False):
+        return await callback.answer(
+            "⚠️ По этому заказу возврат уже был выполнен!", show_alert=True
+        )
+
+    user = await session.scalar(
+        select(User).where(User.tg_id == order.user_id)
+    )
+    if not user:
+        return await callback.answer(
+            "❌ Пользователь не найден!", show_alert=True
+        )
+
+    user.balance += order.price
+    order.refund = True
+
+    await session.commit()
+
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("✅ Возврат успешно выполнен!", show_alert=True)
+
+    try:
+        await bot.send_message(
+            chat_id=user.tg_id,
+            text=(
+                f"💳 <b>Оформлен возврат средств!</b>\n\n"
+                f"За заказ <b>#{order.id}</b> ({order.name}) возвращено <b>{order.price:.2f} ₽</b> на ваш баланс бота.\n"
+                f"🪙 Текущий баланс: <b>{user.balance:.2f} ₽</b>"
+            ),
+            parse_mode="HTML",
+        )
+    except TelegramAPIError:
+        pass  # Если юзер заблокировал бота, хэндлер не упадет

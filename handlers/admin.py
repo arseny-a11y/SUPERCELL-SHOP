@@ -4,6 +4,7 @@ from aiogram.types import Message, CallbackQuery, TelegramObject, InlineKeyboard
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
+from aiogram.types.error_event import ErrorEvent
 from config.config import settings
 from keyboards.reply import admin_menu 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +18,8 @@ from config.config import settings
 import asyncio
 import string
 import secrets
+import traceback
+import html
 import io
 
 
@@ -30,9 +33,24 @@ class IsAdmin(BaseFilter):
 admin_router.message.filter(IsAdmin())
 admin_router.callback_query.filter(IsAdmin())
 
-@admin_router.message(Command("admin"))
-async def admin_command(message: Message):
-    await message.answer('Панель администратора открыта🫡',reply_markup=admin_menu())
+
+# @admin_router.errors()
+# async def error_handler(event: ErrorEvent, bot: Bot):
+#     tb = "".join(
+#         traceback.format_exception(
+#             None, event.exception, event.exception.__traceback__
+#         )
+#     )
+#     # Ограничиваем длину трейсбека под лимит сообщения Telegram
+#     safe_tb = html.escape(tb[-3500:])
+
+#     await bot.send_message(
+#         chat_id=settings.ADMIN_ID,
+#         text=f"🚨 <b>Критическая ошибка:</b>\n<pre>{safe_tb}</pre>",
+#         parse_mode="HTML",
+#     )
+
+
 
 #FSM состояние для загрузки товаров 
 class AdminUploadItems(StatesGroup):
@@ -57,14 +75,16 @@ class EditProductState(StatesGroup):
     waiting_for_data = State()
     waiting_for_price = State()
 
+
+@admin_router.message(Command("admin"))
+async def admin_command(message: Message):
+    await message.answer('Панель администратора открыта🫡',reply_markup=admin_menu())
+
+
 #отмена загрузки в категорию
 @admin_router.callback_query(
         F.data == "admin_cancel_upload",
-        StateFilter(
-        AdminUploadItems.waiting_for_category,
-        AdminUploadItems.waiting_for_sub_category,
-        AdminUploadItems.waiting_for_file
-            )
+        StateFilter(AdminUploadItems)
         )
 async def cancel_upload(callback: CallbackQuery, state: FSMContext):
    await state.clear()
@@ -441,7 +461,7 @@ async def edit_price_product(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.answer(f"💬 Введите новую стоимость товара: ",reply_markup=cancel_kb)
     await callback.answer()
-    
+
 @admin_router.message(EditProductState.waiting_for_price)
 async def edit_price_product_fsm(message: Message, state: FSMContext, session: AsyncSession):
     text = (message.text or "").strip()
@@ -504,7 +524,7 @@ class UserMailingState(StatesGroup):
 @admin_router.callback_query(F.data == "cancel_mailing", UserMailingState.waiting_for_message)
 async def cancel_mailing(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text("🚫 Рассылка отменена.")
+    await callback.message.edit_text("🚫 Рассылка отменена")
 
 @admin_router.message(F.text == "👤 Рассылка")
 async def user_mailing(message: Message, state: FSMContext):
@@ -578,10 +598,10 @@ async def generation_promo_code(session: AsyncSession, length: int = 8):
 
 #отмена создания промокода
 @admin_router.callback_query(
-        F.data == "cancel_promocode",
+        F.data == "admin_cancel_promocode",
         StateFilter(PromoCodeState)
         )
-async def cancel_promocode(callback: CallbackQuery, state: FSMContext):
+async def create_cancel_promocode(callback: CallbackQuery, state: FSMContext):
    await state.clear()
    await callback.message.edit_text("🚫 Создание промокода отменено")
    await callback.answer()
@@ -605,7 +625,6 @@ async def generation_code(callback: CallbackQuery, state: FSMContext, session: A
     await callback.message.answer(f"✨ Ваш сгенерированный промокод: <code>{promo_code}</code>\n\nТеперь введите кол-во использований: ",parse_mode='HTML')
 
 #самостоятельный ввод промокода
-
 @admin_router.message(PromoCodeState.waiting_for_code)
 async def waiting_for_promocode(message: Message, state: FSMContext, session: AsyncSession):
 
@@ -658,7 +677,7 @@ async def max_uses(message: Message, state: FSMContext):
 
     cancel_kb = InlineKeyboardMarkup(
     inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_promocode")]
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_cancel_promocode")]
         ]
     )
 
@@ -715,3 +734,5 @@ async def amount_promocode(message: Message, state: FSMContext, session: AsyncSe
         f"Награда: <b>{amount}</b>",
         parse_mode="HTML"
     )
+
+
