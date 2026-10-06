@@ -20,7 +20,8 @@ def admin_menu() -> ReplyKeyboardMarkup:
         KeyboardButton(text="📊 Статистика"),
         KeyboardButton(text="📦 Управление товарами"),
         KeyboardButton(text="👤 Рассылка"),
-        KeyboardButton(text="🎫 Создать промокод")
+        KeyboardButton(text="🎫 Создать промокод"),
+        KeyboardButton(text="💵 Управление балансом")
     )
 
     kb.adjust(1,2)

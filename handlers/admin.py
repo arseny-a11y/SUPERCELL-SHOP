@@ -3,7 +3,7 @@ from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, TelegramObject, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
+from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter, TelegramAPIError
 from aiogram.types.error_event import ErrorEvent
 from config.config import settings
 from keyboards.reply import admin_menu 
@@ -15,6 +15,7 @@ from database.queries import CreatedCategories, check_promocode
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, time
 from config.config import settings
+import operator
 import asyncio
 import string
 import secrets
@@ -75,6 +76,10 @@ class EditProductState(StatesGroup):
     waiting_for_data = State()
     waiting_for_price = State()
 
+#FSM состояние для поплнения баланса через ID или @username
+class AdminBalanceState(StatesGroup):
+    waiting_for_identifier = State()
+    waiting_for_amount = State()
 
 @admin_router.message(Command("admin"))
 async def admin_command(message: Message):
@@ -736,3 +741,143 @@ async def amount_promocode(message: Message, state: FSMContext, session: AsyncSe
     )
 
 
+#поплнение баланса пользователя по ID или @username
+@admin_router.message(F.text == "💵 Управление балансом")
+async def top_up_balance_user(message: Message, state: FSMContext):
+    await state.set_state(AdminBalanceState.waiting_for_identifier)
+
+    cancel_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="managment_balance")]
+        ]
+    )
+
+    await message.answer("Введите ID или @username (обязательно с @ ) пользователя: ",reply_markup=cancel_kb)
+
+@admin_router.message(AdminBalanceState.waiting_for_identifier)
+async def identifier_user_fsm(message: Message, state: FSMContext):
+
+    cancel_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="managment_balance")]
+        ]
+    )
+
+    text = (message.text or "").strip()
+
+    if not text:
+        return await message.answer("❌ Пожалуйста, введите ID или @username пользователя")
+    
+    await state.update_data(identifier=text)
+    await state.set_state(AdminBalanceState.waiting_for_amount)
+
+    await message.answer("Введите (+ | -) и целое число, на которую вы измените баланс: ", reply_markup=cancel_kb)
+
+
+@admin_router.message(AdminBalanceState.waiting_for_amount)
+async def amount_user_fsm(message: Message, state: FSMContext, session: AsyncSession, bot: Bot):
+
+    text = (message.text or "").strip()
+
+    if not text.startswith(("-", "+")):
+        return await message.answer("❌ Число должно начинаться с (+ | -)")
+
+    amount = text[1:]
+    op = text[0]
+
+    if not amount.isdigit():
+        return await message.answer(
+            "❌ Стоимость товара должна быть целым положительным числом (например: <code>150</code>)",
+            parse_mode="HTML",
+        )
+
+    try:
+        dec_amount = Decimal(amount)
+    except Exception:
+        return await message.answer("❌ Некорректное число.")
+
+    if dec_amount <= 0 or dec_amount > 999_999:
+        return await message.answer("❌ Сумма должна быть в диапазоне от 1 до 999 999.")
+    
+    data = await state.get_data()
+    identifier = data.get("identifier")
+
+    if not identifier:
+        await state.clear()
+        return await message.answer("❌ Ошибка сессии: идентификатор пользователя потерян. Начните заново.")
+    
+    if identifier.startswith("@"):
+        username = identifier[1:]
+
+        user = await session.scalar(select(User).where(User.username == username))
+
+    else:
+        tg_id = identifier
+
+        try:
+            tg_id_int = int(tg_id)
+        except ValueError:
+            await state.clear()
+            return await message.answer("❌ ID пользователя должен быть числом.")
+        user = await session.scalar(select(User).where(User.tg_id == tg_id_int))
+
+
+    if not user:
+        await state.clear()
+        return await message.answer(f"❌ Не удалось найти пользователя. Попробуйте снова...")
+    
+    tg_id_send = user.tg_id
+
+    operation = {
+        "+" : operator.add,
+        "-": operator.sub
+    }
+
+    action = operation.get(op)
+    if not action:
+        await state.clear()
+        return await message.answer("❌ Недопустимая операция.")
+
+    new_balance = action(user.balance, dec_amount)
+
+    if new_balance < 0:
+        await state.clear()
+        return await message.answer("❌ Операция отклонена: баланс не может стать отрицательным.")
+
+
+    user.balance = new_balance
+
+    await session.commit()
+    await state.clear()
+
+    await message.answer(f"✅ Баланс пользователя измене на <b>{op}{amount}</b> ₽", parse_mode="HTML")
+
+    try:
+        if op == "+":
+            text = (
+                f"💳 <b>Пополнение баланса!</b>\n\n"
+                f"Вам начислено: <b>+{dec_amount:.2f} ₽</b>\n"
+                f"Текущий баланс: <b>{user.balance:.2f} ₽</b>"
+            )
+        else:
+            text = (
+                f"⚠️ <b>Корректировка баланса</b>\n\n"
+                f"С вашего баланса списано: <b>-{dec_amount:.2f} ₽</b>\n"
+                f"Текущий баланс: <b>{user.balance:.2f} ₽</b>"
+            )
+
+        await bot.send_message(
+            chat_id=tg_id_send,
+            text=text,
+            parse_mode="HTML"
+        )
+    except TelegramAPIError:
+        pass
+
+
+#отмена управления балансом
+@admin_router.callback_query(F.data == "managment_balance", StateFilter(AdminBalanceState))
+async def cancel_managment_balance(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text("🚫 Управление балансом отменено")
+    await callback.answer()

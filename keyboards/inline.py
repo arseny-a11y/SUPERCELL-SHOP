@@ -210,7 +210,6 @@ def cancel_mailing_kb() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 #кнопка генерации промокода
-
 def generation_code_kb() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text="✨Сгенерировать✨",callback_data="gen_code")
@@ -218,3 +217,5 @@ def generation_code_kb() -> InlineKeyboardMarkup:
 
     kb.adjust(1)
     return kb.as_markup()
+
+#клавиатура управления балансом пользователей
