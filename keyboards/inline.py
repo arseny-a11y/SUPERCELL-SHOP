@@ -2,7 +2,7 @@ from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.types import InlineKeyboardButton
 from aiogram.filters.callback_data import CallbackData
-
+from config.config import settings
 def keyboard_support() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
 
@@ -220,4 +220,13 @@ def generation_code_kb() -> InlineKeyboardMarkup:
     kb.adjust(1)
     return kb.as_markup()
 
-#клавиатура управления балансом пользователей
+#клавиатура проверки подписки на канал
+
+def sub_channel_kb():
+    kb = InlineKeyboardBuilder()
+
+    kb.button(text="📢 Подписаться на канал", url=f"{settings.CHANNEL_URL}")
+    kb.button(text="🔄 Проверить", callback_data="sub_check")
+
+    kb.adjust(1)
+    return kb.as_markup()

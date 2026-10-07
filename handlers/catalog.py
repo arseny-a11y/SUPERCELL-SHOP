@@ -24,12 +24,12 @@ catalog_router = Router()
 
 @catalog_router.message(F.text == "Каталог товаров 🛒")
 async def open_catalog(message: Message, session: AsyncSession):
-
+    is_admin = message.from_user.id in ADMIN_IDS
     categories = await ProductsQueries.get_all_categories(session)
     if not categories:
         return await message.answer("Каталог пока пуст. Скоро здесь появятся товары!")
     
-    await message.answer("Выберите интересующий раздел:",reply_markup=keyboard_categories(categories))
+    await message.answer("Выберите интересующий раздел:",reply_markup=keyboard_categories(categories,is_admin))
 
 @catalog_router.callback_query(CategoryCD.filter())
 async def show_category_pagination(callback: CallbackQuery,callback_data: CategoryCD, session: AsyncSession):
