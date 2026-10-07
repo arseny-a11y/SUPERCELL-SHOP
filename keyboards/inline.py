@@ -48,8 +48,10 @@ def keyboard_categories(categories: list, is_admin: bool = False) -> InlineKeybo
 
     for cat in categories:
         kb.button(text=cat.name,callback_data=CategoryCD(category_id=cat.id).pack())
+
     if is_admin:
         kb.button(text="📦 Создать категорию",callback_data="create_category")
+        
     kb.adjust(1)
     return kb.as_markup()
 

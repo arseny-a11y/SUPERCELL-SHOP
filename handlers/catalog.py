@@ -7,6 +7,7 @@ from database.models import Categories, Items, SubCategories
 from database.queries import ProductsQueries
 from aiogram.exceptions import TelegramBadRequest
 from config.config import settings
+from handlers.admin import ADMIN_IDS
 from keyboards.inline import (
     CategoryCD,
     ItemsCD,
@@ -33,7 +34,7 @@ async def open_catalog(message: Message, session: AsyncSession):
 @catalog_router.callback_query(CategoryCD.filter())
 async def show_category_pagination(callback: CallbackQuery,callback_data: CategoryCD, session: AsyncSession):
     is_admin = (
-        callback.from_user.id == settings.ADMIN_ID
+        callback.from_user.id in ADMIN_IDS
     )
     category_id = callback_data.category_id
 
@@ -48,7 +49,7 @@ async def show_category_pagination(callback: CallbackQuery,callback_data: Catego
 @catalog_router.callback_query(SubCategoryCD.filter())
 async def sub_categories(callback: CallbackQuery, callback_data: SubCategoryCD, session: AsyncSession):
     is_admin = (
-        callback.from_user.id == settings.ADMIN_ID
+        callback.from_user.id in ADMIN_IDS
     )
     # ID конкретной выбранной подкатегории
     sub_category_id = callback_data.sub_category_id
@@ -88,7 +89,7 @@ async def sub_categories(callback: CallbackQuery, callback_data: SubCategoryCD, 
 async def pagination_button(callback: CallbackQuery, callback_data: ItemsPageCD, session: AsyncSession):
 
     is_admin = (
-        callback.from_user.id == settings.ADMIN_ID
+        callback.from_user.id in ADMIN_IDS
     )
 
     sub_category_id = callback_data.category_id
@@ -128,7 +129,7 @@ async def pagination_button(callback: CallbackQuery, callback_data: ItemsPageCD,
 @catalog_router.callback_query(ItemsCD.filter())
 async def back_to_product(callback: CallbackQuery, callback_data: ItemsCD, session: AsyncSession):
     is_admin = (
-        callback.from_user.id == settings.ADMIN_ID
+        callback.from_user.id in ADMIN_IDS
     )
     item_id = callback_data.item_id
     item = await session.scalar(select(Items).where(Items.id == item_id, Items.is_sold.is_(False)))
@@ -152,11 +153,11 @@ async def back_to_product(callback: CallbackQuery, callback_data: ItemsCD, sessi
 
 @catalog_router.callback_query(F.data == "back_to_categories")
 async def back_to_categories_menu(callback: CallbackQuery, session: AsyncSession):
-
+    is_admin = callback.from_user.id in ADMIN_IDS
     categories = await ProductsQueries.get_all_categories(session)
     if not categories:
         return await callback.answer("Каталог пока пуст. Скоро здесь появятся товары!")
     
-    await callback.message.edit_text(text="Выберите интересующий раздел:",reply_markup=keyboard_categories(categories))
+    await callback.message.edit_text(text="Выберите интересующий раздел:",reply_markup=keyboard_categories(categories, is_admin))
     await callback.answer()
 

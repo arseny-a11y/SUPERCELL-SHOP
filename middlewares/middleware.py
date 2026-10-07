@@ -1,8 +1,10 @@
 from typing import Any, Callable, Awaitable
-from aiogram.types import TelegramObject, User
+from aiogram.types import TelegramObject, User, CallbackQuery, Message
 from aiogram import BaseMiddleware
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 from database.queries import UserQueries
+from cachetools import TTLCache
+
 
 class DbSessionMiddleware(BaseMiddleware):
     def __init__(self, session_pool: async_sessionmaker) -> None:
@@ -43,3 +45,4 @@ class UserDatabaseMiddleware(BaseMiddleware):
         )
 
         return await handler(event,data)
+

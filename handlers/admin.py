@@ -1,4 +1,4 @@
-from aiogram.filters import BaseFilter, Command, StateFilter
+from aiogram.filters import BaseFilter, Command, StateFilter, or_f
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, TelegramObject, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
@@ -25,11 +25,11 @@ import io
 
 
 admin_router = Router()
-ADMIN_ID = [settings.ADMIN_ID]
+ADMIN_IDS = settings.ADMIN_IDS
 
 class IsAdmin(BaseFilter):
     async def __call__(self, event: TelegramObject) -> bool:
-        return event.from_user.id in ADMIN_ID
+        return event.from_user.id in ADMIN_IDS
 
 admin_router.message.filter(IsAdmin())
 admin_router.callback_query.filter(IsAdmin())
@@ -46,7 +46,7 @@ admin_router.callback_query.filter(IsAdmin())
 #     safe_tb = html.escape(tb[-3500:])
 
 #     await bot.send_message(
-#         chat_id=settings.ADMIN_ID,
+#         chat_id=settings.ADMIN_IDS[0],
 #         text=f"🚨 <b>Критическая ошибка:</b>\n<pre>{safe_tb}</pre>",
 #         parse_mode="HTML",
 #     )
@@ -81,7 +81,7 @@ class AdminBalanceState(StatesGroup):
     waiting_for_identifier = State()
     waiting_for_amount = State()
 
-@admin_router.message(Command("admin"))
+@admin_router.message(or_f(Command("admin"), F.text.in_(["🤖 Админка","админ"])))
 async def admin_command(message: Message):
     await message.answer('Панель администратора открыта🫡',reply_markup=admin_menu())
 
@@ -101,7 +101,7 @@ async def upload_items(message: Message, session: AsyncSession, state: FSMContex
     
     categories = (await session.scalars(select(Categories))).all()
     is_admin = (
-        message.from_user.id == ADMIN_ID
+        message.from_user.id in ADMIN_IDS
     )
     if not categories:
         return await message.answer("Создайте хоть одну категорию!",reply_markup=keyboard_categories(categories,is_admin))
@@ -270,11 +270,11 @@ async def sales_stats(message: Message, session: AsyncSession):
 @admin_router.message(F.text == "📦 Управление товарами")
 async def product_managment(message: Message, session: AsyncSession):
     is_admin = (
-        message.from_user.id == ADMIN_ID
+        message.from_user.id in ADMIN_IDS
     )
-    all_categories = await session.scalars(select(Categories))
+    all_categories = (await session.scalars(select(Categories))).all()
 
-    await message.answer(text="Выберите категорию для управления 📦", reply_markup=keyboard_categories(all_categories,is_admin))
+    await message.answer(text="Выберите категорию для управления 📦", reply_markup=keyboard_categories(all_categories, is_admin=is_admin))
 
 #удаление категории
 @admin_router.callback_query(F.data.startswith("del_cat"))
@@ -551,7 +551,7 @@ async def user_mailing_state(message: Message, state: FSMContext, session: Async
     user_blocked = 0
     
     for chat_id in ids_all_users:
-        if chat_id == settings.ADMIN_ID:
+        if chat_id in ADMIN_IDS:
             continue
         try:
             await message.copy_to(chat_id=chat_id)

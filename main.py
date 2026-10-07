@@ -3,7 +3,7 @@ from aiogram.client.session.aiohttp import AiohttpSession # работа с prox
 import asyncio
 import logging
 from config.config import settings
-from middlewares.middleware import DbSessionMiddleware, UserDatabaseMiddleware
+from middlewares.middleware import DbSessionMiddleware, UserDatabaseMiddleware, AntiFrod
 from database.database import async_session_factory
 from database.database import init_db
 from handlers.user import user_router
@@ -22,6 +22,9 @@ async def main():
     #подключаем middlewares
     dp.update.outer_middleware(DbSessionMiddleware(session_pool=async_session_factory))
     dp.update.outer_middleware(UserDatabaseMiddleware())
+
+
+
 
     #подключаем routers
     dp.include_routers(

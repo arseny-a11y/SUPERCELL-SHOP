@@ -12,7 +12,7 @@ from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from payments.crypto_pay import CryptoPay
-from config.config import settings
+from handlers.admin import ADMIN_IDS
 from html import escape
 
 
@@ -20,6 +20,8 @@ user_router = Router()
 
 @user_router.message(CommandStart())
 async def start_command(message: Message, user: User):
+
+    is_admin = message.from_user.id in ADMIN_IDS
 
     photo = FSInputFile('images/menu.png')
 
@@ -29,7 +31,7 @@ async def start_command(message: Message, user: User):
         "У нас ты найдешь лучший выбор аккаунтов и цифровых товаров Supercell.\n\n"
         "😉 Заглядывай в каталог и выбирай самые топовые товары! С любовью, SUP SHOP 🧡"
     )
-    await message.answer_photo(photo=photo,caption=text,parse_mode='HTML',reply_markup=create_keyboard_menu())
+    await message.answer_photo(photo=photo,caption=text,parse_mode='HTML',reply_markup=create_keyboard_menu(is_admin))
 
 
 #обработка информации о магазине

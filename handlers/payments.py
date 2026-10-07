@@ -10,6 +10,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.exceptions import TelegramAPIError
 from decimal import Decimal
+from handlers.admin import ADMIN_IDS
 import html
 
 router_pay = Router()
@@ -323,7 +324,7 @@ async def buy_product(
         ]
     )
     await bot.send_message(
-        chat_id=settings.ADMIN_ID,
+        chat_id=ADMIN_IDS[0],
         text=admin_text,
         parse_mode="HTML",
         reply_markup=refund_kb
