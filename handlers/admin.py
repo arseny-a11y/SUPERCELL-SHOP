@@ -5,7 +5,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter, TelegramAPIError
 from aiogram.types.error_event import ErrorEvent
-from config.config import settings
 from keyboards.reply import admin_menu 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select,func, delete, update
@@ -86,7 +85,7 @@ async def admin_command(message: Message):
     await message.answer('Панель администратора открыта🫡',reply_markup=admin_menu())
 
 
-#отмена загрузки в категорию
+#--------------------------------------отмена загрузки в категорию--------------------------------------
 @admin_router.callback_query(
         F.data == "admin_cancel_upload",
         StateFilter(AdminUploadItems)
@@ -154,7 +153,7 @@ async def sub_category_selected(callback: CallbackQuery, state: FSMContext, sess
         parse_mode="HTML",
         reply_markup=cancel_kb
     )
-
+    await callback.answer()
 
 @admin_router.message(AdminUploadItems.waiting_for_file, F.document)
 async def upload_items_file(message: Message, state: FSMContext, session: AsyncSession, bot: Bot):
@@ -213,7 +212,7 @@ async def upload_items_file(message: Message, state: FSMContext, session: AsyncS
 
 
 
-#Статистика продаж
+#--------------------------------------Статистика продаж--------------------------------------
 @admin_router.message(F.text == "📊 Статистика")
 async def sales_stats(message: Message, session: AsyncSession):
     
@@ -276,7 +275,7 @@ async def product_managment(message: Message, session: AsyncSession):
 
     await message.answer(text="Выберите категорию для управления 📦", reply_markup=keyboard_categories(all_categories, is_admin=is_admin))
 
-#удаление категории
+#--------------------------------------удаление категории--------------------------------------
 @admin_router.callback_query(F.data.startswith("del_cat"))
 async def delete_category(callback: CallbackQuery, session: AsyncSession):
     cat_id = int(callback.data.split(":")[-1])
@@ -294,7 +293,7 @@ async def delete_category(callback: CallbackQuery, session: AsyncSession):
     await callback.answer("Категория успешно удалена!")
     await callback.message.edit_text(f"✅ Категория #{cat_id} удалена.")
 
-#удаление подкатегории
+#--------------------------------------удаление подкатегории--------------------------------------
 @admin_router.callback_query(F.data.startswith("delete_sub_cat"))
 async def delete_sub_category(callback: CallbackQuery, session: AsyncSession):
     sub_category_id = int(callback.data.split(":")[-1])
@@ -313,7 +312,7 @@ async def delete_sub_category(callback: CallbackQuery, session: AsyncSession):
     await callback.message.edit_text(f"✅ Подкатегория #{sub_category_id} удалена.")
     
 
-#ловит callback: admin_delete_item, для удаления конкретного товара
+#----------ловит callback: admin_delete_item, для удаления конкретного товара--------
 @admin_router.callback_query(F.data.startswith("admin_delete_item"))
 async def delete_item(callback: CallbackQuery, session: AsyncSession):
     item_id = int(callback.data.split(":")[-1])
@@ -335,12 +334,26 @@ async def delete_item(callback: CallbackQuery, session: AsyncSession):
         await callback.message.edit_text("🗑 Товар был удалён из категории.")
 
 
-#создание категории
+
+#--------------------------------------создание и отмена создания категории--------------------------------------
+
+@admin_router.callback_query(F.data == "cancel_create_cat", CreateCategory.waiting_for_name)
+async def cancel_create_category(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text("🚫 Создание категории отменено")
+    await callback.answer()
+
 @admin_router.callback_query(F.data == "create_category")
 async def created_category_button(callback: CallbackQuery,state: FSMContext):
 
+    cancel_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_create_cat")]
+        ]
+    )
+
     await state.set_state(CreateCategory.waiting_for_name)
-    await callback.message.edit_text("💬 Введите название категории: ")
+    await callback.message.edit_text("💬 Введите название категории: ", reply_markup=cancel_kb)
     await callback.answer()
 
 
@@ -359,16 +372,29 @@ async def created_category_fsm(message: Message, state: FSMContext, session: Asy
     await state.clear()
 
 
-#создание подкатегорий
+#--------------------------------------создание и отмена создания подкатегорий--------------------------------------
+
+@admin_router.callback_query(F.data == "cancel_create_subcat", CreateSubCategory.waiting_for_name)
+async def cancel_create_subcategory(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text("🚫 Создание подкатегории отменено")
+    await callback.answer()
+
 @admin_router.callback_query(F.data.startswith("create_sub_cat"))
 async def create_sub_category(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+
+    cancel_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_create_subcat")]
+        ]
+    )
 
     category_id = int(callback.data.split(":")[-1])
     await state.update_data(category_id=category_id)
 
     await state.set_state(CreateSubCategory.waiting_for_name)
 
-    await callback.message.edit_text("💬 Введите название подкатегории: ")
+    await callback.message.edit_text("💬 Введите название подкатегории: ", reply_markup=cancel_kb)
     await callback.answer()
 
 @admin_router.message(CreateSubCategory.waiting_for_name)
@@ -400,7 +426,7 @@ async def created_sub_category_fsm(message: Message, state: FSMContext, session:
         parse_mode="HTML"
     )
 
-#редактирование данных товара
+#--------------------------------------редактирование данных товара--------------------------------------
 @admin_router.callback_query(F.data.startswith("admin_edit_data"))
 async def edit_data_product(callback: CallbackQuery, state: FSMContext):
     item_id = int(callback.data.split(":")[-1])
@@ -449,7 +475,7 @@ async def edit_data_product_fsm(message: Message, state: FSMContext, session: As
         parse_mode="HTML",
     )
 
-#редактирование цены товара
+#--------------------------------------редактирование цены товара--------------------------------------
 @admin_router.callback_query(F.data.startswith("admin_edit_price"))
 async def edit_price_product(callback: CallbackQuery, state: FSMContext):
     item_id = int(callback.data.split(":")[-1])
@@ -506,7 +532,7 @@ async def edit_price_product_fsm(message: Message, state: FSMContext, session: A
         parse_mode="HTML",
     )
 
-# Один хэндлер на обе отмены редактирования товаров
+# --------------------------------------Один хэндлер на обе отмены редактирования товаров--------------------------------------
 @admin_router.callback_query(
     F.data.in_(["cancel_edit_data", "cancel_edit_price"]),
     StateFilter(
@@ -525,11 +551,12 @@ class UserMailingState(StatesGroup):
     waiting_for_message = State()
 
 
-#отмена рассылки пользователям
+#--------------------------------------отмена рассылки пользователям--------------------------------------
 @admin_router.callback_query(F.data == "cancel_mailing", UserMailingState.waiting_for_message)
 async def cancel_mailing(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.edit_text("🚫 Рассылка отменена")
+    await callback.answer()
 
 @admin_router.message(F.text == "👤 Рассылка")
 async def user_mailing(message: Message, state: FSMContext):
@@ -584,7 +611,7 @@ async def user_mailing_state(message: Message, state: FSMContext, session: Async
     )
 
 
-#создание промокодов
+#--------------------------------------создание промокодов--------------------------------------
 
 #async функция по генерации промокодов и проверка существования в базе
 async def generation_promo_code(session: AsyncSession, length: int = 8):
@@ -601,7 +628,7 @@ async def generation_promo_code(session: AsyncSession, length: int = 8):
             return promo_code
 
 
-#отмена создания промокода
+#--------------------------------------отмена создания промокода--------------------------------------
 @admin_router.callback_query(
         F.data == "admin_cancel_promocode",
         StateFilter(PromoCodeState)
@@ -611,14 +638,14 @@ async def create_cancel_promocode(callback: CallbackQuery, state: FSMContext):
    await callback.message.edit_text("🚫 Создание промокода отменено")
    await callback.answer()
 
-#handler обработки нажатия кнопки и открытие FSM состояния
+#--------------------------------------handler обработки нажатия кнопки и открытие FSM состояния--------------------------------------
 @admin_router.message(F.text == "🎫 Создать промокод")
 async def create_promocode(message: Message, state: FSMContext):
     await state.set_state(PromoCodeState.waiting_for_code)
 
     await message.answer("🎫 Введите или сгенерируйте промокод: ", reply_markup=generation_code_kb())
 
-#handler обработки нажатия "сгенерировать"
+#--------------------------------------handler обработки нажатия "сгенерировать"--------------------------------------
 @admin_router.callback_query(PromoCodeState.waiting_for_code, F.data == "gen_code")
 async def generation_code(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     await callback.answer()
@@ -629,7 +656,7 @@ async def generation_code(callback: CallbackQuery, state: FSMContext, session: A
     await state.set_state(PromoCodeState.waiting_for_max_uses)
     await callback.message.answer(f"✨ Ваш сгенерированный промокод: <code>{promo_code}</code>\n\nТеперь введите кол-во использований: ",parse_mode='HTML')
 
-#самостоятельный ввод промокода
+#--------------------------------------самостоятельный ввод промокода--------------------------------------
 @admin_router.message(PromoCodeState.waiting_for_code)
 async def waiting_for_promocode(message: Message, state: FSMContext, session: AsyncSession):
 
@@ -660,7 +687,7 @@ async def waiting_for_promocode(message: Message, state: FSMContext, session: As
         parse_mode="HTML"
     )
 
-#обработа FSM состояния кол-ва использований
+#--------------------------------------обработа FSM состояния кол-ва использований--------------------------------------
 
 @admin_router.message(PromoCodeState.waiting_for_max_uses)
 async def max_uses(message: Message, state: FSMContext):
@@ -698,7 +725,7 @@ async def max_uses(message: Message, state: FSMContext):
     )
 
 
-# обработа FSM состояния суммы вознаграждения
+# --------------------------------------обработа FSM состояния суммы вознаграждения--------------------------------------
 @admin_router.message(PromoCodeState.waiting_for_amount)
 async def amount_promocode(message: Message, state: FSMContext, session: AsyncSession):
     text = message.text.strip() if message.text else ""
@@ -741,7 +768,7 @@ async def amount_promocode(message: Message, state: FSMContext, session: AsyncSe
     )
 
 
-#поплнение баланса пользователя по ID или @username
+#--------------------------------------поплнение баланса пользователя по ID или @username--------------------------------------
 @admin_router.message(F.text == "💵 Управление балансом")
 async def top_up_balance_user(message: Message, state: FSMContext):
     await state.set_state(AdminBalanceState.waiting_for_identifier)
@@ -787,7 +814,7 @@ async def amount_user_fsm(message: Message, state: FSMContext, session: AsyncSes
 
     if not amount.isdigit():
         return await message.answer(
-            "❌ Стоимость товара должна быть целым положительным числом (например: <code>150</code>)",
+            "❌ Стоимость пополнения должна быть целым положительным числом (например: <code>150</code>)",
             parse_mode="HTML",
         )
 
@@ -875,7 +902,7 @@ async def amount_user_fsm(message: Message, state: FSMContext, session: AsyncSes
         pass
 
 
-#отмена управления балансом
+#--------------------------------------отмена управления балансом--------------------------------------
 @admin_router.callback_query(F.data == "managment_balance", StateFilter(AdminBalanceState))
 async def cancel_managment_balance(callback: CallbackQuery, state: FSMContext):
     await state.clear()

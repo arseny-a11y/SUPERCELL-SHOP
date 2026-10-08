@@ -35,8 +35,6 @@ async def main():
     catalog_router.message.middleware(sub_channel)
     catalog_router.callback_query.middleware(sub_channel)
 
-
-
     #подключаем routers
     dp.include_routers(
         admin_router,
